@@ -74,10 +74,10 @@ All colors MUST be HSL.
   }
 
   .dark {
-    --background: 222 47% 11%;
+    --background: 220 13% 14%;
     --foreground: 210 40% 98%;
 
-    --card: 222 47% 13%;
+    --card: 220 13% 16%;
     --card-foreground: 210 40% 98%;
 
     --popover: 222 47% 13%;

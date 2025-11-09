@@ -9,7 +9,9 @@ import { CategoryPieChart } from "@/components/CategoryPieChart"
 import { CreditCardCategoryPieChart } from "@/components/CreditCardCategoryPieChart"
 import { DeleteMonthTransactions } from "@/components/DeleteMonthTransactions"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Wallet, CreditCard, PieChart } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Wallet, CreditCard, PieChart, ChevronLeft } from "lucide-react"
+import { Link } from "react-router-dom"
 
 const Index = () => {
   return (
@@ -17,9 +19,14 @@ const Index = () => {
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                Finance
+            <div className="flex items-center gap-3">
+              <Link to="/">
+                <Button variant="outline" size="icon">
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+              </Link>
+              <h1 className="text-2xl font-semibold">
+                Financeiro
               </h1>
             </div>
             <YearPicker />
