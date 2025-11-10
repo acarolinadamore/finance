@@ -13,6 +13,9 @@ dist/
 build/
 *.local
 
+# Claude settings
+.claude/settings.local.json
+
 # IDE
 .vscode/
 .idea/

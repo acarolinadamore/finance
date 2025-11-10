@@ -9,7 +9,10 @@
       "Bash(taskkill:*)",
       "Bash(findstr:*)",
       "Bash(cat:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git fetch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
