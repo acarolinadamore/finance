@@ -1,0 +1,121 @@
+import { useState, useEffect } from 'react';
+import { Routine, RoutineCompletion } from '@/types/routine';
+
+const ROUTINES_STORAGE_KEY = 'routines-data';
+const COMPLETIONS_STORAGE_KEY = 'routine-completions-data';
+
+export const useRoutines = () => {
+  const [routines, setRoutines] = useState<Routine[]>(() => {
+    const stored = localStorage.getItem(ROUTINES_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  });
+
+  const [completions, setCompletions] = useState<RoutineCompletion[]>(() => {
+    const stored = localStorage.getItem(COMPLETIONS_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ROUTINES_STORAGE_KEY, JSON.stringify(routines));
+    } catch (error) {
+      console.error('Erro ao salvar rotinas:', error);
+    }
+  }, [routines]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COMPLETIONS_STORAGE_KEY, JSON.stringify(completions));
+    } catch (error) {
+      console.error('Erro ao salvar conclusões:', error);
+    }
+  }, [completions]);
+
+  const addRoutine = (routine: Omit<Routine, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const now = new Date().toISOString();
+    const newRoutine: Routine = {
+      ...routine,
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    setRoutines((prev) => [newRoutine, ...prev]);
+    return newRoutine;
+  };
+
+  const updateRoutine = (id: string, updates: Partial<Omit<Routine, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    setRoutines((prev) =>
+      prev.map((routine) =>
+        routine.id === id
+          ? { ...routine, ...updates, updatedAt: new Date().toISOString() }
+          : routine
+      )
+    );
+  };
+
+  const deleteRoutine = (id: string) => {
+    setRoutines((prev) => prev.filter((routine) => routine.id !== id));
+    setCompletions((prev) => prev.filter((completion) => completion.routineId !== id));
+  };
+
+  const toggleCompletion = (routineId: string, date: string) => {
+    const existingCompletion = completions.find(
+      (c) => c.routineId === routineId && c.completionDate === date
+    );
+
+    if (existingCompletion) {
+      setCompletions((prev) =>
+        prev.map((c) =>
+          c.id === existingCompletion.id
+            ? {
+                ...c,
+                completed: !c.completed,
+                completedAt: !c.completed ? new Date().toISOString() : undefined,
+              }
+            : c
+        )
+      );
+    } else {
+      const newCompletion: RoutineCompletion = {
+        id: crypto.randomUUID(),
+        routineId,
+        completionDate: date,
+        completed: true,
+        completedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+      setCompletions((prev) => [newCompletion, ...prev]);
+    }
+  };
+
+  const isCompleted = (routineId: string, date: string): boolean => {
+    const completion = completions.find(
+      (c) => c.routineId === routineId && c.completionDate === date
+    );
+    return completion?.completed || false;
+  };
+
+  const getCompletionRate = (date: string): number => {
+    const activeRoutines = routines.filter((r) => r.isActive);
+    if (activeRoutines.length === 0) return 0;
+
+    const completedCount = activeRoutines.filter((r) => isCompleted(r.id, date)).length;
+    return Math.round((completedCount / activeRoutines.length) * 100);
+  };
+
+  const getRoutinesByPeriod = (period: string) => {
+    return routines.filter((r) => r.period === period && r.isActive);
+  };
+
+  return {
+    routines,
+    completions,
+    addRoutine,
+    updateRoutine,
+    deleteRoutine,
+    toggleCompletion,
+    isCompleted,
+    getCompletionRate,
+    getRoutinesByPeriod,
+  };
+};

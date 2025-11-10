@@ -6,7 +6,7 @@ const { Pool } = require('pg');
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3032;
 
 // Middleware
 app.use(cors());
@@ -1042,6 +1042,493 @@ app.delete('/api/dreams/:id', async (req, res) => {
   } catch (error) {
     console.error('Erro ao excluir sonho:', error);
     res.status(500).json({ error: 'Erro ao excluir sonho' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE ROTINAS
+// ================================
+
+// Listar todas as rotinas
+app.get('/api/routines', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM routines ORDER BY period, created_at DESC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar rotinas:', error);
+    res.status(500).json({ error: 'Erro ao buscar rotinas' });
+  }
+});
+
+// Criar uma nova rotina
+app.post('/api/routines', async (req, res) => {
+  const { name, period, frequency, specific_days, times_per_week, icon, color, add_to_habit_tracking } = req.body;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO routines (name, period, frequency, specific_days, times_per_week, icon, color, add_to_habit_tracking, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) RETURNING *`,
+      [name, period, frequency, specific_days || null, times_per_week || null, icon || null, color || '#8b5cf6', add_to_habit_tracking || false]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar rotina:', error);
+    res.status(500).json({ error: 'Erro ao criar rotina' });
+  }
+});
+
+// Atualizar uma rotina
+app.put('/api/routines/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, period, frequency, specific_days, times_per_week, icon, color, add_to_habit_tracking, is_active } = req.body;
+
+  try {
+    const result = await pool.query(
+      `UPDATE routines
+       SET name = $1, period = $2, frequency = $3, specific_days = $4, times_per_week = $5,
+           icon = $6, color = $7, add_to_habit_tracking = $8, is_active = $9, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $10 RETURNING *`,
+      [name, period, frequency, specific_days || null, times_per_week || null, icon || null, color, add_to_habit_tracking, is_active, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Rotina não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar rotina:', error);
+    res.status(500).json({ error: 'Erro ao atualizar rotina' });
+  }
+});
+
+// Excluir uma rotina
+app.delete('/api/routines/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM routines WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Rotina não encontrada' });
+    }
+
+    res.json({ message: 'Rotina excluída com sucesso', id: result.rows[0].id });
+  } catch (error) {
+    console.error('Erro ao excluir rotina:', error);
+    res.status(500).json({ error: 'Erro ao excluir rotina' });
+  }
+});
+
+// Listar completions de rotinas (com filtro opcional por data)
+app.get('/api/routine-completions', async (req, res) => {
+  const { routine_id, start_date, end_date } = req.query;
+
+  try {
+    let query = 'SELECT * FROM routine_completions WHERE 1=1';
+    const params = [];
+
+    if (routine_id) {
+      params.push(routine_id);
+      query += ` AND routine_id = $${params.length}`;
+    }
+
+    if (start_date) {
+      params.push(start_date);
+      query += ` AND completion_date >= $${params.length}`;
+    }
+
+    if (end_date) {
+      params.push(end_date);
+      query += ` AND completion_date <= $${params.length}`;
+    }
+
+    query += ' ORDER BY completion_date DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar completions:', error);
+    res.status(500).json({ error: 'Erro ao buscar completions' });
+  }
+});
+
+// Toggle completion de rotina (criar ou atualizar)
+app.post('/api/routine-completions/toggle', async (req, res) => {
+  const { routine_id, completion_date } = req.body;
+
+  try {
+    // Verificar se já existe
+    const existing = await pool.query(
+      'SELECT * FROM routine_completions WHERE routine_id = $1 AND completion_date = $2',
+      [routine_id, completion_date]
+    );
+
+    if (existing.rows.length > 0) {
+      // Toggle o valor de completed
+      const result = await pool.query(
+        'UPDATE routine_completions SET completed = NOT completed WHERE routine_id = $1 AND completion_date = $2 RETURNING *',
+        [routine_id, completion_date]
+      );
+      res.json(result.rows[0]);
+    } else {
+      // Criar novo
+      const result = await pool.query(
+        'INSERT INTO routine_completions (routine_id, completion_date, completed) VALUES ($1, $2, true) RETURNING *',
+        [routine_id, completion_date]
+      );
+      res.status(201).json(result.rows[0]);
+    }
+  } catch (error) {
+    console.error('Erro ao toggle completion:', error);
+    res.status(500).json({ error: 'Erro ao toggle completion' });
+  }
+});
+
+// Excluir um completion
+app.delete('/api/routine-completions/:id', async (req, res) => {
+  const { id} = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM routine_completions WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Completion não encontrado' });
+    }
+
+    res.json({ message: 'Completion excluído com sucesso', id: result.rows[0].id });
+  } catch (error) {
+    console.error('Erro ao excluir completion:', error);
+    res.status(500).json({ error: 'Erro ao excluir completion' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE HÁBITOS
+// ================================
+
+// Listar todos os hábitos
+app.get('/api/habits', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM habits ORDER BY created_at DESC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar hábitos:', error);
+    res.status(500).json({ error: 'Erro ao buscar hábitos' });
+  }
+});
+
+// Criar um novo hábito
+app.post('/api/habits', async (req, res) => {
+  const { routine_id, name, period, frequency, specific_days, times_per_week, start_date, end_date, icon, color } = req.body;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO habits (routine_id, name, period, frequency, specific_days, times_per_week, start_date, end_date, icon, color, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true) RETURNING *`,
+      [routine_id || null, name, period || null, frequency, specific_days || null, times_per_week || null, start_date, end_date || null, icon || null, color || '#8b5cf6']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar hábito:', error);
+    res.status(500).json({ error: 'Erro ao criar hábito' });
+  }
+});
+
+// Atualizar um hábito
+app.put('/api/habits/:id', async (req, res) => {
+  const { id } = req.params;
+  const { routine_id, name, period, frequency, specific_days, times_per_week, start_date, end_date, icon, color, is_active } = req.body;
+
+  try {
+    const result = await pool.query(
+      `UPDATE habits
+       SET routine_id = $1, name = $2, period = $3, frequency = $4, specific_days = $5,
+           times_per_week = $6, start_date = $7, end_date = $8, icon = $9, color = $10,
+           is_active = $11, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $12 RETURNING *`,
+      [routine_id || null, name, period || null, frequency, specific_days || null, times_per_week || null, start_date, end_date || null, icon || null, color, is_active, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Hábito não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar hábito:', error);
+    res.status(500).json({ error: 'Erro ao atualizar hábito' });
+  }
+});
+
+// Arquivar um hábito
+app.patch('/api/habits/:id/archive', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'UPDATE habits SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Hábito não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao arquivar hábito:', error);
+    res.status(500).json({ error: 'Erro ao arquivar hábito' });
+  }
+});
+
+// Desarquivar um hábito
+app.patch('/api/habits/:id/unarchive', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'UPDATE habits SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Hábito não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao desarquivar hábito:', error);
+    res.status(500).json({ error: 'Erro ao desarquivar hábito' });
+  }
+});
+
+// Excluir um hábito
+app.delete('/api/habits/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM habits WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Hábito não encontrado' });
+    }
+
+    res.json({ message: 'Hábito excluído com sucesso', id: result.rows[0].id });
+  } catch (error) {
+    console.error('Erro ao excluir hábito:', error);
+    res.status(500).json({ error: 'Erro ao excluir hábito' });
+  }
+});
+
+// Listar completions de hábitos (com filtro opcional)
+app.get('/api/habit-completions', async (req, res) => {
+  const { habit_id, start_date, end_date } = req.query;
+
+  try {
+    let query = 'SELECT * FROM habit_completions WHERE 1=1';
+    const params = [];
+
+    if (habit_id) {
+      params.push(habit_id);
+      query += ` AND habit_id = $${params.length}`;
+    }
+
+    if (start_date) {
+      params.push(start_date);
+      query += ` AND completion_date >= $${params.length}`;
+    }
+
+    if (end_date) {
+      params.push(end_date);
+      query += ` AND completion_date <= $${params.length}`;
+    }
+
+    query += ' ORDER BY completion_date DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar completions de hábitos:', error);
+    res.status(500).json({ error: 'Erro ao buscar completions de hábitos' });
+  }
+});
+
+// Toggle completion de hábito
+app.post('/api/habit-completions/toggle', async (req, res) => {
+  const { habit_id, completion_date } = req.body;
+
+  try {
+    // Verificar se já existe
+    const existing = await pool.query(
+      'SELECT * FROM habit_completions WHERE habit_id = $1 AND completion_date = $2',
+      [habit_id, completion_date]
+    );
+
+    if (existing.rows.length > 0) {
+      // Toggle o valor de completed
+      const result = await pool.query(
+        'UPDATE habit_completions SET completed = NOT completed WHERE habit_id = $1 AND completion_date = $2 RETURNING *',
+        [habit_id, completion_date]
+      );
+      res.json(result.rows[0]);
+    } else {
+      // Criar novo
+      const result = await pool.query(
+        'INSERT INTO habit_completions (habit_id, completion_date, completed) VALUES ($1, $2, true) RETURNING *',
+        [habit_id, completion_date]
+      );
+      res.status(201).json(result.rows[0]);
+    }
+  } catch (error) {
+    console.error('Erro ao toggle completion de hábito:', error);
+    res.status(500).json({ error: 'Erro ao toggle completion de hábito' });
+  }
+});
+
+// Excluir um completion de hábito
+app.delete('/api/habit-completions/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM habit_completions WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Completion não encontrado' });
+    }
+
+    res.json({ message: 'Completion excluído com sucesso', id: result.rows[0].id });
+  } catch (error) {
+    console.error('Erro ao excluir completion de hábito:', error);
+    res.status(500).json({ error: 'Erro ao excluir completion de hábito' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE HUMOR (MOOD)
+// ================================
+
+// Listar todos os registros de humor
+app.get('/api/moods', async (req, res) => {
+  const { start_date, end_date } = req.query;
+
+  try {
+    let query = 'SELECT * FROM daily_moods WHERE 1=1';
+    const params = [];
+
+    if (start_date) {
+      params.push(start_date);
+      query += ` AND mood_date >= $${params.length}`;
+    }
+
+    if (end_date) {
+      params.push(end_date);
+      query += ` AND mood_date <= $${params.length}`;
+    }
+
+    query += ' ORDER BY mood_date DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar registros de humor:', error);
+    res.status(500).json({ error: 'Erro ao buscar registros de humor' });
+  }
+});
+
+// Buscar humor por data específica
+app.get('/api/moods/:date', async (req, res) => {
+  const { date } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM daily_moods WHERE mood_date = $1',
+      [date]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Registro não encontrado para esta data' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar humor:', error);
+    res.status(500).json({ error: 'Erro ao buscar humor' });
+  }
+});
+
+// Criar ou atualizar humor (upsert)
+app.post('/api/moods', async (req, res) => {
+  const { mood_date, emotion_ids, day_rating, notes } = req.body;
+
+  try {
+    // Tentar inserir, se existir, atualizar
+    const result = await pool.query(
+      `INSERT INTO daily_moods (mood_date, emotion_ids, day_rating, notes)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (mood_date)
+       DO UPDATE SET
+         emotion_ids = EXCLUDED.emotion_ids,
+         day_rating = EXCLUDED.day_rating,
+         notes = EXCLUDED.notes,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [mood_date, emotion_ids || [], day_rating || null, notes || null]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao salvar humor:', error);
+    res.status(500).json({ error: 'Erro ao salvar humor' });
+  }
+});
+
+// Atualizar humor
+app.put('/api/moods/:date', async (req, res) => {
+  const { date } = req.params;
+  const { emotion_ids, day_rating, notes } = req.body;
+
+  try {
+    const result = await pool.query(
+      `UPDATE daily_moods
+       SET emotion_ids = $1, day_rating = $2, notes = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE mood_date = $4 RETURNING *`,
+      [emotion_ids || [], day_rating || null, notes || null, date]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Registro não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar humor:', error);
+    res.status(500).json({ error: 'Erro ao atualizar humor' });
+  }
+});
+
+// Excluir humor
+app.delete('/api/moods/:date', async (req, res) => {
+  const { date } = req.params;
+
+  try {
+    const result = await pool.query(
+      'DELETE FROM daily_moods WHERE mood_date = $1 RETURNING mood_date',
+      [date]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Registro não encontrado' });
+    }
+
+    res.json({ message: 'Registro excluído com sucesso', date: result.rows[0].mood_date });
+  } catch (error) {
+    console.error('Erro ao excluir humor:', error);
+    res.status(500).json({ error: 'Erro ao excluir humor' });
   }
 });
 

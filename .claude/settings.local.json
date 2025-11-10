@@ -8,7 +8,8 @@
       "Bash(netstat:*)",
       "Bash(taskkill:*)",
       "Bash(findstr:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm run:*)"
     ],
     "deny": [],
     "ask": []

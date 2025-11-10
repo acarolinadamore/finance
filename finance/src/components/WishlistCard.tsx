@@ -24,7 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Plus, MoreVertical, Pencil, Trash2, ExternalLink, Check, X } from "lucide-react"
+import { Plus, MoreVertical, Pencil, Trash2, ExternalLink, Check, X, GripVertical } from "lucide-react"
 
 interface ItemPrice {
   id: number
@@ -71,6 +71,7 @@ interface WishlistCardProps {
   onUpdatePrice: (priceId: number, price: { price?: number; link?: string; store_name?: string }) => void
   onTogglePriceSelected: (priceId: number, selected: boolean) => void
   onDeletePrice: (priceId: number) => void
+  dragHandleProps?: any
 }
 
 export const WishlistCard = ({
@@ -86,6 +87,7 @@ export const WishlistCard = ({
   onUpdatePrice,
   onTogglePriceSelected,
   onDeletePrice,
+  dragHandleProps,
 }: WishlistCardProps) => {
   const [isAddItemOpen, setIsAddItemOpen] = useState(false)
   const [isEditListOpen, setIsEditListOpen] = useState(false)
@@ -209,8 +211,16 @@ export const WishlistCard = ({
   return (
     <Card className="flex flex-col h-full">
       <CardHeader>
-        <div className="flex items-start justify-between">
-          <div>
+        <div className="flex items-start justify-between gap-2">
+          {dragHandleProps && (
+            <div
+              {...dragHandleProps}
+              className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 pt-1"
+            >
+              <GripVertical className="h-5 w-5" />
+            </div>
+          )}
+          <div className="flex-1">
             <CardTitle>{wishlist.name}</CardTitle>
             <CardDescription>
               {wishlist.items.length} {wishlist.items.length === 1 ? "item" : "itens"}

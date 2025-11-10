@@ -66,8 +66,8 @@ const SortableWishlistCard = (props: SortableWishlistCardProps) => {
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <WishlistCard {...props} />
+    <div ref={setNodeRef} style={style}>
+      <WishlistCard {...props} dragHandleProps={{ ...attributes, ...listeners }} />
     </div>
   )
 }

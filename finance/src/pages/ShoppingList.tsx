@@ -62,8 +62,8 @@ const SortableShoppingListCard = (props: SortableShoppingListCardProps) => {
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <ShoppingListCard {...props} />
+    <div ref={setNodeRef} style={style}>
+      <ShoppingListCard {...props} dragHandleProps={{ ...attributes, ...listeners }} />
     </div>
   )
 }
