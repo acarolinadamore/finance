@@ -6,6 +6,7 @@ import {
   updateRoutine,
   deleteRoutine,
   toggleRoutineCompletion,
+  reorderRoutines,
   type ApiRoutine,
   type ApiRoutineCompletion
 } from '@/services/api';
@@ -38,6 +39,8 @@ export function useCreateRoutine() {
     mutationFn: createRoutine,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routines'] });
+      // Invalidar hábitos também, pois criar uma rotina pode criar um hábito automaticamente
+      queryClient.invalidateQueries({ queryKey: ['habits'] });
       toast.success('Rotina criada com sucesso!');
     },
     onError: (error: Error) => {
@@ -54,6 +57,8 @@ export function useUpdateRoutine() {
       updateRoutine(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routines'] });
+      // Invalidar hábitos também, pois atualizar uma rotina pode criar/atualizar/desativar um hábito
+      queryClient.invalidateQueries({ queryKey: ['habits'] });
       toast.success('Rotina atualizada!');
     },
     onError: (error: Error) => {
@@ -84,9 +89,26 @@ export function useToggleRoutineCompletion() {
     mutationFn: toggleRoutineCompletion,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['routine-completions'] });
+      // Invalidar habit-completions também, pois marcar uma rotina sincroniza com o hábito
+      queryClient.invalidateQueries({ queryKey: ['habit-completions'] });
     },
     onError: (error: Error) => {
       toast.error(`Erro ao marcar rotina: ${error.message}`);
+    },
+  });
+}
+
+export function useReorderRoutines() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: reorderRoutines,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['routines'] });
+      // Sem toast - reordenação silenciosa
+    },
+    onError: (error: Error) => {
+      toast.error(`Erro ao reordenar: ${error.message}`);
     },
   });
 }

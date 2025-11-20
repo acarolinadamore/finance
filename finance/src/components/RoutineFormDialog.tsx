@@ -59,6 +59,10 @@ export const RoutineFormDialog = ({
 
   useEffect(() => {
     if (editingRoutine) {
+      console.log('🔍 [RoutineFormDialog] editingRoutine recebido:', editingRoutine);
+      console.log('🔍 [RoutineFormDialog] addToHabitTracking:', editingRoutine.addToHabitTracking);
+      console.log('🔍 [RoutineFormDialog] add_to_habit_tracking:', (editingRoutine as any).add_to_habit_tracking);
+
       setFormData({
         name: editingRoutine.name,
         description: editingRoutine.description || '',
@@ -68,8 +72,10 @@ export const RoutineFormDialog = ({
         timesPerWeek: (editingRoutine as any).timesPerWeek,
         icon: editingRoutine.icon || '',
         isActive: editingRoutine.isActive,
-        addToHabitTracking: editingRoutine.addToHabitTracking || false,
+        addToHabitTracking: editingRoutine.addToHabitTracking || (editingRoutine as any).add_to_habit_tracking || false,
       });
+
+      console.log('✅ [RoutineFormDialog] formData.addToHabitTracking definido como:', editingRoutine.addToHabitTracking || (editingRoutine as any).add_to_habit_tracking || false);
     } else {
       setFormData({
         name: '',
@@ -88,13 +94,18 @@ export const RoutineFormDialog = ({
   const handleSubmit = () => {
     if (!formData.name.trim()) return;
 
-    onSubmit({
+    const dataToSubmit = {
       ...formData,
       icon: formData.icon || undefined,
       description: formData.description || undefined,
       specificDays: formData.specificDays.length > 0 ? formData.specificDays : undefined,
       timesPerWeek: formData.timesPerWeek,
-    } as any);
+    };
+
+    console.log('📤 [RoutineFormDialog] Enviando dados:', dataToSubmit);
+    console.log('📤 [RoutineFormDialog] addToHabitTracking no envio:', dataToSubmit.addToHabitTracking);
+
+    onSubmit(dataToSubmit as any);
     onOpenChange(false);
   };
 
@@ -239,13 +250,22 @@ export const RoutineFormDialog = ({
           )}
 
           {/* Adicionar ao controle de hábitos */}
-          <div className="flex items-center space-x-2 p-4 rounded-lg border bg-muted/30">
+          <div
+            className="flex items-start gap-3 p-4 rounded-lg border bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={() => {
+              console.log('🖱️ [Div] Clique na div detectado');
+              const newValue = !formData.addToHabitTracking;
+              console.log('🔘 [Checkbox] Mudança:', formData.addToHabitTracking, '→', newValue);
+              setFormData({ ...formData, addToHabitTracking: newValue });
+            }}
+          >
             <Checkbox
               id="addToHabitTracking"
               checked={formData.addToHabitTracking}
-              onCheckedChange={(checked) =>
-                setFormData({ ...formData, addToHabitTracking: checked as boolean })
-              }
+              onCheckedChange={(checked) => {
+                console.log('🔘 [Checkbox] onCheckedChange chamado:', checked);
+              }}
+              className="mt-0.5"
             />
             <div className="flex-1">
               <Label
@@ -258,6 +278,11 @@ export const RoutineFormDialog = ({
                 Esta rotina aparecerá na aba Hábitos para acompanhamento mensal
               </p>
             </div>
+          </div>
+
+          {/* Debug do estado */}
+          <div className="text-xs text-muted-foreground bg-muted/20 p-2 rounded">
+            Estado atual: addToHabitTracking = {formData.addToHabitTracking ? '✅ true' : '❌ false'}
           </div>
 
           <Button onClick={handleSubmit} className="w-full">

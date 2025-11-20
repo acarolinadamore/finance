@@ -7,6 +7,7 @@ import Home from "./pages/Home";
 import Index from "./pages/Index";
 import Wishlist from "./pages/Wishlist";
 import ShoppingList from "./pages/ShoppingList";
+import TodoList from "./pages/TodoList";
 import Goals from "./pages/Goals";
 import Meals from "./pages/Meals";
 import MealReports from "./pages/MealReports";
@@ -19,6 +20,12 @@ import Leituras from "./pages/Leituras";
 import Estudos from "./pages/Estudos";
 import NotFound from "./pages/NotFound";
 import MigrationTool from "./pages/MigrationTool";
+import CicloFeminino from "./pages/CicloFeminino";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import Admin from "./pages/Admin";
 import { TransactionsExample } from "./components/TransactionsExample";
 
 const queryClient = new QueryClient();
@@ -30,10 +37,21 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          {/* Rotas de autenticação (públicas) */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+
+          {/* Rota de administração (apenas admin) */}
+          <Route path="/admin" element={<Admin />} />
+
+          {/* Rotas da aplicação */}
           <Route path="/" element={<Home />} />
           <Route path="/finance" element={<Index />} />
           <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/lista-mercado" element={<ShoppingList />} />
+          <Route path="/todo-list" element={<TodoList />} />
           <Route path="/metas" element={<Goals />} />
           <Route path="/meals" element={<Meals />} />
           <Route path="/meals/reports" element={<MealReports />} />
@@ -44,6 +62,7 @@ const App = () => (
           <Route path="/diario" element={<Diario />} />
           <Route path="/leituras" element={<Leituras />} />
           <Route path="/estudos" element={<Estudos />} />
+          <Route path="/ciclo-feminino" element={<CicloFeminino />} />
           <Route path="/migration" element={<MigrationTool />} />
           <Route path="/api-test" element={<TransactionsExample />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

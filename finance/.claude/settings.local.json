@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/anaca/dev/finance/**)",
+      "Bash(npm install:*)",
+      "Bash(node index.js:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

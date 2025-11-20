@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useState, useEffect } from "react"
 import {
   Card,
@@ -20,10 +20,15 @@ import {
   TrendingDown,
   BookOpen,
   CheckSquare,
+  ListTodo,
   Repeat,
   BookMarked,
   GraduationCap,
+  Activity,
+  LogOut,
+  Shield,
 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
   DialogContent,
@@ -120,6 +125,29 @@ const SortableModuleCard = ({ module }: SortableModuleCardProps) => {
 }
 
 const Home = () => {
+  const navigate = useNavigate()
+  const { toast } = useToast()
+
+  // Verificar se usuário está logado
+  const [user, setUser] = useState<any>(null)
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user')
+    if (userData) {
+      setUser(JSON.parse(userData))
+    }
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    toast({
+      title: 'Logout realizado',
+      description: 'Até logo!',
+    })
+    navigate('/login')
+  }
+
   // Configuração do degradê do background (altere os valores hexadecimais)
   const bgGradientTop = "#0956C7" // Cor de cima
   const bgGradientBottom = "#12398D" // Cor de baixo
@@ -180,6 +208,14 @@ const Home = () => {
       icon: ShoppingCart,
       path: "/lista-mercado",
       color: "#14b8a6", // Teal
+    },
+    {
+      id: "todo-list",
+      title: "Lista de Tarefas",
+      description: "Organize suas tarefas e atividades diárias",
+      icon: ListTodo,
+      path: "/todo-list",
+      color: "#f97316", // Orange
     },
     {
       id: "refeicoes",
@@ -244,6 +280,14 @@ const Home = () => {
       icon: GraduationCap,
       path: "/estudos",
       color: "#06b6d4", // Cyan
+    },
+    {
+      id: "ciclo-feminino",
+      title: "Ciclo Feminino",
+      description: "Acompanhe seu ciclo menstrual e bem-estar",
+      icon: Activity,
+      path: "/ciclo-feminino",
+      color: "#db2777", // Rose
     },
   ]
 
@@ -319,8 +363,23 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Settings no canto superior direito da tela */}
-      <div className="fixed top-4 right-4 z-50">
+      {/* Botões no canto superior direito */}
+      <div className="fixed top-4 right-4 z-[100] flex gap-2">
+        {/* Botão Admin (apenas para admins) */}
+        {user && user.role === 'admin' && (
+          <Link to="/admin">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full shadow-lg bg-white/80 backdrop-blur-sm"
+              title="Painel Admin"
+            >
+              <Shield className="h-5 w-5" />
+            </Button>
+          </Link>
+        )}
+
+        {/* Settings */}
         <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
           <DialogTrigger asChild>
             <Button
@@ -331,14 +390,14 @@ const Home = () => {
               <Settings className="h-5 w-5" />
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>Configurações de Módulos</DialogTitle>
               <DialogDescription>
                 Selecione quais módulos deseja visualizar na tela principal
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 overflow-y-auto flex-1">
               {defaultModules.map((module) => {
                 const Icon = module.icon
                 return (
@@ -381,6 +440,19 @@ const Home = () => {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Botão Logout (mais à direita - para todos logados) */}
+        {user && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleLogout}
+            className="h-10 w-10 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full shadow-lg bg-white/80 backdrop-blur-sm"
+            title="Sair"
+          >
+            <LogOut className="h-5 w-5" />
+          </Button>
+        )}
       </div>
 
       <main className="container mx-auto px-4">
@@ -388,12 +460,12 @@ const Home = () => {
           <div className="px-6 py-6">
             <div className="text-center">
               <h1
-                className="text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent relative z-10 py-2"
+                className="text-6xl font-bold bg-gradient-to-r from-sky-400 to-blue-500 bg-clip-text text-transparent py-2"
                 style={{ fontFamily: "'Dancing Script', cursive" }}
               >
-                Simplifica
+                Ordena
               </h1>
-              <p className="text-muted-foreground text-base mt-2 relative z-0">
+              <p className="text-muted-foreground text-base relative z-0">
                 Sua vida organizada em um só lugar.
               </p>
             </div>

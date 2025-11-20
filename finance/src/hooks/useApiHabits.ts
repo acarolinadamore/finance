@@ -116,6 +116,8 @@ export function useToggleHabitCompletion() {
     mutationFn: toggleHabitCompletion,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['habit-completions'] });
+      // Invalidar routine-completions também, pois marcar um hábito sincroniza com a rotina
+      queryClient.invalidateQueries({ queryKey: ['routine-completions'] });
     },
     onError: (error: Error) => {
       toast.error(`Erro ao marcar hábito: ${error.message}`);

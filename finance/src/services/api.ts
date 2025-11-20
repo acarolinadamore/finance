@@ -154,20 +154,35 @@ export async function fetchRoutines(): Promise<ApiRoutine[]> {
 }
 
 export async function createRoutine(routine: Omit<ApiRoutine, 'id'>): Promise<ApiRoutine> {
+  console.log('🚀 [Frontend] Enviando createRoutine:', routine);
+  console.log('🚀 [Frontend] add_to_habit_tracking =', routine.add_to_habit_tracking);
+  console.log('🚀 [Frontend] URL:', `${API_BASE_URL}/routines`);
+
   const response = await fetch(`${API_BASE_URL}/routines`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(routine),
   });
+
+  console.log('📥 [Frontend] Response status:', response.status);
+  console.log('📥 [Frontend] Response ok:', response.ok);
+
   return handleResponse<ApiRoutine>(response);
 }
 
 export async function updateRoutine(id: string, routine: Partial<ApiRoutine>): Promise<ApiRoutine> {
+  console.log('🔄 [Frontend] Enviando updateRoutine:', { id, routine });
+  console.log('🔄 [Frontend] add_to_habit_tracking =', routine.add_to_habit_tracking);
+
   const response = await fetch(`${API_BASE_URL}/routines/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(routine),
   });
+
+  console.log('📥 [Frontend] Update Response status:', response.status);
+  console.log('📥 [Frontend] Update Response ok:', response.ok);
+
   return handleResponse<ApiRoutine>(response);
 }
 
@@ -175,6 +190,19 @@ export async function deleteRoutine(id: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/routines/${id}`, {
     method: 'DELETE',
   });
+  await handleResponse<{ message: string }>(response);
+}
+
+export async function reorderRoutines(orders: { id: string; display_order: number }[]): Promise<void> {
+  console.log('🔄 [API] Enviando reorderRoutines:', orders);
+
+  const response = await fetch(`${API_BASE_URL}/routines/reorder`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orders }),
+  });
+
+  console.log('📥 [API] Reorder Response status:', response.status);
   await handleResponse<{ message: string }>(response);
 }
 
@@ -195,13 +223,19 @@ export async function fetchRoutineCompletions(params?: {
 export async function toggleRoutineCompletion(data: {
   routine_id: string;
   completion_date: string;
+  completed: boolean;
 }): Promise<ApiRoutineCompletion> {
+  console.log('📡 [API] toggleRoutineCompletion:', data);
+
   const response = await fetch(`${API_BASE_URL}/routine-completions/toggle`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return handleResponse<ApiRoutineCompletion>(response);
+
+  const result = await handleResponse<ApiRoutineCompletion>(response);
+  console.log('📥 [API] toggleRoutineCompletion response:', result);
+  return result;
 }
 
 export interface ApiHabit {
@@ -230,8 +264,20 @@ export interface ApiHabitCompletion {
 }
 
 export async function fetchHabits(): Promise<ApiHabit[]> {
+  console.log('🔍 [API] Buscando hábitos...');
   const response = await fetch(`${API_BASE_URL}/habits`);
-  return handleResponse<ApiHabit[]>(response);
+  const data = await handleResponse<ApiHabit[]>(response);
+  console.log('✅ [API] Hábitos retornados (raw):', data);
+  console.log('✅ [API] Total de hábitos:', data.length);
+
+  // Normalizar is_active para garantir compatibilidade
+  const normalizedData = data.map((habit: any) => ({
+    ...habit,
+    is_active: habit.is_active !== undefined ? habit.is_active : true, // Default true se undefined
+  }));
+
+  console.log('✅ [API] Hábitos normalizados:', normalizedData);
+  return normalizedData;
 }
 
 export async function createHabit(habit: Omit<ApiHabit, 'id'>): Promise<ApiHabit> {
@@ -346,6 +392,148 @@ export async function updateMood(date: string, mood: Partial<ApiMood>): Promise<
 
 export async function deleteMood(date: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/moods/${date}`, {
+    method: 'DELETE',
+  });
+  await handleResponse<{ message: string }>(response);
+}
+
+export interface ApiCycleSettings {
+  id?: string;
+  last_period_start_date: string;
+  average_cycle_length: number;
+  average_period_length: number;
+  luteal_phase_length: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiCycleRecord {
+  id?: string;
+  record_date: string;
+  flow_level: 'none' | 'light' | 'moderate' | 'heavy';
+  symptoms: string[];
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ApiCycleStats {
+  currentCycleDay: number;
+  daysUntilNextPeriod: number;
+  ovulationDay: number;
+  fertileWindowStart: number;
+  fertileWindowEnd: number;
+  pmsStart: number;
+  topSymptoms: string[];
+  isRegular: boolean;
+  variance: number;
+  averagePeriodLength: number;
+  averageCycleLength: number;
+  lastPeriodStartDate: string;
+}
+
+export async function fetchCycleSettings(): Promise<ApiCycleSettings> {
+  const response = await fetch(`${API_BASE_URL}/cycle-settings`);
+  return handleResponse<ApiCycleSettings>(response);
+}
+
+export async function upsertCycleSettings(settings: Omit<ApiCycleSettings, 'id'>): Promise<ApiCycleSettings> {
+  const response = await fetch(`${API_BASE_URL}/cycle-settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  return handleResponse<ApiCycleSettings>(response);
+}
+
+export async function fetchCycleRecords(params?: {
+  start_date?: string;
+  end_date?: string;
+}): Promise<ApiCycleRecord[]> {
+  const queryParams = new URLSearchParams();
+  if (params?.start_date) queryParams.append('start_date', params.start_date);
+  if (params?.end_date) queryParams.append('end_date', params.end_date);
+
+  const response = await fetch(`${API_BASE_URL}/cycle-records?${queryParams}`);
+  return handleResponse<ApiCycleRecord[]>(response);
+}
+
+export async function fetchCycleRecordByDate(date: string): Promise<ApiCycleRecord> {
+  const response = await fetch(`${API_BASE_URL}/cycle-records/${date}`);
+  return handleResponse<ApiCycleRecord>(response);
+}
+
+export async function upsertCycleRecord(record: Omit<ApiCycleRecord, 'id'>): Promise<ApiCycleRecord> {
+  const response = await fetch(`${API_BASE_URL}/cycle-records`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record),
+  });
+  return handleResponse<ApiCycleRecord>(response);
+}
+
+export async function updateCycleRecord(date: string, record: Partial<ApiCycleRecord>): Promise<ApiCycleRecord> {
+  const response = await fetch(`${API_BASE_URL}/cycle-records/${date}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record),
+  });
+  return handleResponse<ApiCycleRecord>(response);
+}
+
+export async function deleteCycleRecord(date: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/cycle-records/${date}`, {
+    method: 'DELETE',
+  });
+  await handleResponse<{ message: string }>(response);
+}
+
+export async function fetchCycleStats(): Promise<ApiCycleStats> {
+  const response = await fetch(`${API_BASE_URL}/cycle-stats`);
+  return handleResponse<ApiCycleStats>(response);
+}
+
+// ==================== CALENDAR EVENTS ====================
+
+export interface ApiCalendarEvent {
+  id: string;
+  event_date: string;
+  event_time: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiCreateCalendarEvent {
+  event_date: string;
+  event_time: string;
+  description: string;
+}
+
+export async function fetchCalendarEvents(params?: {
+  start_date?: string;
+  end_date?: string;
+}): Promise<ApiCalendarEvent[]> {
+  const queryParams = new URLSearchParams();
+  if (params?.start_date) queryParams.append('start_date', params.start_date);
+  if (params?.end_date) queryParams.append('end_date', params.end_date);
+
+  const url = `${API_BASE_URL}/calendar-events${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+  const response = await fetch(url);
+  return handleResponse<ApiCalendarEvent[]>(response);
+}
+
+export async function createCalendarEvent(event: ApiCreateCalendarEvent): Promise<ApiCalendarEvent> {
+  const response = await fetch(`${API_BASE_URL}/calendar-events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  });
+  return handleResponse<ApiCalendarEvent>(response);
+}
+
+export async function deleteCalendarEvent(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/calendar-events/${id}`, {
     method: 'DELETE',
   });
   await handleResponse<{ message: string }>(response);

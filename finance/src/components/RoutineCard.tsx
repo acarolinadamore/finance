@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { MoreVertical, Pencil, Trash2, GripVertical } from 'lucide-react';
 import { Routine, FREQUENCY_LABELS } from '@/types/routine';
 
 interface RoutineCardProps {
@@ -16,6 +16,7 @@ interface RoutineCardProps {
   onToggle: () => void;
   onEdit: (routine: Routine) => void;
   onDelete: (id: string) => void;
+  dragHandleProps?: any;
 }
 
 export const RoutineCard = ({
@@ -24,9 +25,18 @@ export const RoutineCard = ({
   onToggle,
   onEdit,
   onDelete,
+  dragHandleProps,
 }: RoutineCardProps) => {
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors group">
+      {dragHandleProps && (
+        <div
+          {...dragHandleProps}
+          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 pt-1"
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+      )}
       <Checkbox
         checked={isCompleted}
         onCheckedChange={onToggle}
