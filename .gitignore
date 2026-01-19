@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Environment variables
 .env
@@ -15,6 +14,7 @@ build/
 
 # Claude settings
 .claude/settings.local.json
+**/.claude/settings.local.json
 
 # IDE
 .vscode/
@@ -39,3 +39,22 @@ yarn-error.log*
 # Database
 *.db
 *.sqlite
+
+# Scripts temporários de fix/debug
+fix_*.sql
+fix_*.js
+server/check-*.js
+server/fix-*.js
+server/fix-*.sql
+server/update-*.sql
+server/run-update-*.js
+server/add-*-category.js
+
+# Mobile
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+
+# Shared
+shared/node_modules/
+shared/dist/

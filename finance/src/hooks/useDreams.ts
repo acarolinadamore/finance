@@ -2,6 +2,13 @@ import { useState, useEffect } from "react"
 
 const API_URL = "http://localhost:3032/api"
 
+interface LinkedGoal {
+  id: number
+  title: string
+  progress: number
+  life_area_color?: string
+}
+
 interface Dream {
   id: number
   title: string
@@ -12,6 +19,7 @@ interface Dream {
   life_area_name?: string
   life_area_color?: string
   prazo_tipo?: 'curto' | 'medio' | 'longo'
+  linked_goals?: LinkedGoal[]
   created_at: string
   updated_at: string
 }
@@ -103,6 +111,50 @@ export const useDreams = () => {
     }
   }
 
+  const reorderDreams = async (orders: { id: number; display_order: number }[]) => {
+    try {
+      const response = await fetch(`${API_URL}/dreams/reorder`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orders }),
+      })
+      if (!response.ok) throw new Error("Erro ao reordenar sonhos")
+      // Atualizar lista local
+      await fetchDreams()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido")
+      throw err
+    }
+  }
+
+  const linkGoal = async (dreamId: number, goalId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/dreams/${dreamId}/goals/${goalId}`, {
+        method: "POST",
+      })
+      if (!response.ok) throw new Error("Erro ao vincular meta")
+      // Atualizar lista local
+      await fetchDreams()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido")
+      throw err
+    }
+  }
+
+  const unlinkGoal = async (dreamId: number, goalId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/dreams/${dreamId}/goals/${goalId}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) throw new Error("Erro ao desvincular meta")
+      // Atualizar lista local
+      await fetchDreams()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido")
+      throw err
+    }
+  }
+
   return {
     dreams,
     loading,
@@ -110,6 +162,9 @@ export const useDreams = () => {
     createDream,
     updateDream,
     deleteDream,
+    reorderDreams,
+    linkGoal,
+    unlinkGoal,
     refresh: fetchDreams,
   }
 }

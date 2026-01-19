@@ -1,0 +1,13 @@
+{
+  "name": "@finance/shared",
+  "version": "1.0.0",
+  "description": "Shared types and utilities for Finance App",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": ["finance", "shared", "types"],
+  "author": "Ana Carolina",
+  "license": "MIT"
+}

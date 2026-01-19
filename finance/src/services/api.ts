@@ -36,6 +36,14 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+  };
+}
+
 export async function fetchTransactions(): Promise<ApiTransaction[]> {
   const response = await fetch(`${API_BASE_URL}/transactions`);
   return handleResponse<ApiTransaction[]>(response);
@@ -160,7 +168,7 @@ export async function createRoutine(routine: Omit<ApiRoutine, 'id'>): Promise<Ap
 
   const response = await fetch(`${API_BASE_URL}/routines`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(routine),
   });
 
@@ -176,7 +184,7 @@ export async function updateRoutine(id: string, routine: Partial<ApiRoutine>): P
 
   const response = await fetch(`${API_BASE_URL}/routines/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(routine),
   });
 
@@ -198,7 +206,7 @@ export async function reorderRoutines(orders: { id: string; display_order: numbe
 
   const response = await fetch(`${API_BASE_URL}/routines/reorder`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ orders }),
   });
 
@@ -229,7 +237,7 @@ export async function toggleRoutineCompletion(data: {
 
   const response = await fetch(`${API_BASE_URL}/routine-completions/toggle`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
 
@@ -283,7 +291,7 @@ export async function fetchHabits(): Promise<ApiHabit[]> {
 export async function createHabit(habit: Omit<ApiHabit, 'id'>): Promise<ApiHabit> {
   const response = await fetch(`${API_BASE_URL}/habits`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(habit),
   });
   return handleResponse<ApiHabit>(response);
@@ -292,7 +300,7 @@ export async function createHabit(habit: Omit<ApiHabit, 'id'>): Promise<ApiHabit
 export async function updateHabit(id: string, habit: Partial<ApiHabit>): Promise<ApiHabit> {
   const response = await fetch(`${API_BASE_URL}/habits/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(habit),
   });
   return handleResponse<ApiHabit>(response);
@@ -339,7 +347,7 @@ export async function toggleHabitCompletion(data: {
 }): Promise<ApiHabitCompletion> {
   const response = await fetch(`${API_BASE_URL}/habit-completions/toggle`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(data),
   });
   return handleResponse<ApiHabitCompletion>(response);
@@ -375,7 +383,7 @@ export async function fetchMoodByDate(date: string): Promise<ApiMood> {
 export async function upsertMood(mood: Omit<ApiMood, 'id'>): Promise<ApiMood> {
   const response = await fetch(`${API_BASE_URL}/moods`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(mood),
   });
   return handleResponse<ApiMood>(response);
@@ -384,7 +392,7 @@ export async function upsertMood(mood: Omit<ApiMood, 'id'>): Promise<ApiMood> {
 export async function updateMood(date: string, mood: Partial<ApiMood>): Promise<ApiMood> {
   const response = await fetch(`${API_BASE_URL}/moods/${date}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(mood),
   });
   return handleResponse<ApiMood>(response);
@@ -440,7 +448,7 @@ export async function fetchCycleSettings(): Promise<ApiCycleSettings> {
 export async function upsertCycleSettings(settings: Omit<ApiCycleSettings, 'id'>): Promise<ApiCycleSettings> {
   const response = await fetch(`${API_BASE_URL}/cycle-settings`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(settings),
   });
   return handleResponse<ApiCycleSettings>(response);
@@ -466,7 +474,7 @@ export async function fetchCycleRecordByDate(date: string): Promise<ApiCycleReco
 export async function upsertCycleRecord(record: Omit<ApiCycleRecord, 'id'>): Promise<ApiCycleRecord> {
   const response = await fetch(`${API_BASE_URL}/cycle-records`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(record),
   });
   return handleResponse<ApiCycleRecord>(response);
@@ -475,7 +483,7 @@ export async function upsertCycleRecord(record: Omit<ApiCycleRecord, 'id'>): Pro
 export async function updateCycleRecord(date: string, record: Partial<ApiCycleRecord>): Promise<ApiCycleRecord> {
   const response = await fetch(`${API_BASE_URL}/cycle-records/${date}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(record),
   });
   return handleResponse<ApiCycleRecord>(response);
@@ -526,7 +534,7 @@ export async function fetchCalendarEvents(params?: {
 export async function createCalendarEvent(event: ApiCreateCalendarEvent): Promise<ApiCalendarEvent> {
   const response = await fetch(`${API_BASE_URL}/calendar-events`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify(event),
   });
   return handleResponse<ApiCalendarEvent>(response);
@@ -538,3 +546,44 @@ export async function deleteCalendarEvent(id: string): Promise<void> {
   });
   await handleResponse<{ message: string }>(response);
 }
+
+// ==================== GENERIC API OBJECT ====================
+
+export const api = {
+  get: async <T = any>(url: string): Promise<{ data: T }> => {
+    const response = await fetch(`http://localhost:3032${url}`, {
+      headers: getAuthHeaders(),
+    });
+    const data = await handleResponse<T>(response);
+    return { data };
+  },
+
+  post: async <T = any>(url: string, body?: any): Promise<{ data: T }> => {
+    const response = await fetch(`http://localhost:3032${url}`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await handleResponse<T>(response);
+    return { data };
+  },
+
+  put: async <T = any>(url: string, body?: any): Promise<{ data: T }> => {
+    const response = await fetch(`http://localhost:3032${url}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await handleResponse<T>(response);
+    return { data };
+  },
+
+  delete: async <T = any>(url: string): Promise<{ data: T }> => {
+    const response = await fetch(`http://localhost:3032${url}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    const data = await handleResponse<T>(response);
+    return { data };
+  },
+};

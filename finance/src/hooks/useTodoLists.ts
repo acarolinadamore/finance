@@ -2,6 +2,14 @@ import { useState, useEffect } from "react"
 
 const API_URL = "http://localhost:3032/api"
 
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+  };
+}
+
 interface TodoListItem {
   id: number
   list_id: number
@@ -48,7 +56,7 @@ export const useTodoLists = () => {
     try {
       const response = await fetch(`${API_URL}/todo-lists`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ name }),
       })
       if (!response.ok) throw new Error("Erro ao criar lista")
@@ -65,7 +73,7 @@ export const useTodoLists = () => {
     try {
       const response = await fetch(`${API_URL}/todo-lists/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ name }),
       })
       if (!response.ok) throw new Error("Erro ao atualizar lista")
@@ -85,6 +93,7 @@ export const useTodoLists = () => {
     try {
       const response = await fetch(`${API_URL}/todo-lists/${id}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       })
       if (!response.ok) throw new Error("Erro ao excluir lista")
       setLists(lists.filter((list) => list.id !== id))
@@ -98,7 +107,7 @@ export const useTodoLists = () => {
     try {
       const response = await fetch(`${API_URL}/todo-lists/${listId}/items`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(item),
       })
       if (!response.ok) throw new Error("Erro ao adicionar item")
@@ -122,10 +131,15 @@ export const useTodoLists = () => {
     try {
       const response = await fetch(`${API_URL}/todo-list-items/${itemId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(updates),
       })
-      if (!response.ok) throw new Error("Erro ao atualizar item")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+        console.error('Erro ao atualizar item:', response.status, errorData);
+        console.error('ItemId:', itemId, 'Updates:', updates);
+        throw new Error(errorData.error || "Erro ao atualizar item");
+      }
       const updatedItem = await response.json()
       setLists(
         lists.map((list) => ({
@@ -150,6 +164,7 @@ export const useTodoLists = () => {
     try {
       const response = await fetch(`${API_URL}/todo-list-items/${itemId}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       })
       if (!response.ok) throw new Error("Erro ao excluir item")
       setLists(
@@ -176,10 +191,14 @@ export const useTodoLists = () => {
     try {
       const response = await fetch(`${API_URL}/todo-lists/reorder`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ orders }),
       })
-      if (!response.ok) throw new Error("Erro ao reordenar")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+        console.error('Erro ao reordenar listas:', response.status, errorData);
+        throw new Error(errorData.error || "Erro ao reordenar");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")
       // Reverte em caso de erro
@@ -204,10 +223,16 @@ export const useTodoLists = () => {
     try {
       const response = await fetch(`${API_URL}/todo-list-items/reorder`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ orders }),
       })
-      if (!response.ok) throw new Error("Erro ao reordenar itens")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+        console.error('Erro ao reordenar itens:', response.status, errorData);
+        console.error('URL:', `${API_URL}/todo-list-items/reorder`);
+        console.error('Orders:', orders);
+        throw new Error(errorData.error || "Erro ao reordenar itens");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido")
       // Reverte em caso de erro

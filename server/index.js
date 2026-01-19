@@ -9,8 +9,23 @@ const app = express();
 const PORT = process.env.PORT || 3032;
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: [
+    'http://localhost:8080',
+    'http://localhost:8081',
+    'http://localhost:3031',
+    'http://127.0.0.1:8081',
+    'http://192.168.100.108:8081',
+    'http://localhost:19006',
+    'http://127.0.0.1:19006',
+    'http://192.168.100.108:19006'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Configuração do PostgreSQL
 const pool = new Pool({
@@ -21,17 +36,45 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 });
 
+// Importar rotas de autenticação e admin
+const { initAuthRoutes } = require('./routes/auth');
+const { initAdminRoutes } = require('./routes/admin');
+const { initCatolicoRoutes } = require('./routes/catolico');
+const { authenticateToken } = require('./middleware/auth');
+
 // Teste de conexão
 pool.connect((err, client, release) => {
   if (err) {
     console.error('Erro ao conectar ao PostgreSQL:', err.stack);
   } else {
-    console.log('Conectado ao PostgreSQL com sucesso!');
+    console.log('\n' + '='.repeat(60));
+    console.log('🚀 SERVIDOR INICIADO - ' + new Date().toLocaleString());
+    console.log('='.repeat(60));
+    console.log('✅ Conectado ao PostgreSQL com sucesso!');
+    console.log('📍 Porta:', process.env.PORT || 3032);
+    console.log('='.repeat(60) + '\n');
     release();
   }
 });
 
-// Rotas
+// ============================================
+// ROTAS DE AUTENTICAÇÃO (públicas)
+// ============================================
+app.use('/api/auth', initAuthRoutes(pool));
+
+// ============================================
+// ROTAS DE ADMINISTRAÇÃO (requer autenticação + admin)
+// ============================================
+app.use('/api/admin', initAdminRoutes(pool));
+
+// ============================================
+// ROTAS DO MÓDULO CATÓLICO (requer autenticação)
+// ============================================
+app.use('/api/catolico', initCatolicoRoutes(pool));
+
+// ============================================
+// ROTAS GERAIS
+// ============================================
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'API está funcionando' });
 });
@@ -791,18 +834,28 @@ app.get('/api/goals', async (req, res) => {
       SELECT g.*, la.name as life_area_name, la.color as life_area_color
       FROM goals g
       LEFT JOIN life_areas la ON g.life_area_id = la.id
-      ORDER BY g.created_at DESC
+      ORDER BY g.display_order ASC NULLS LAST, g.created_at DESC
     `);
 
     const goals = goalsResult.rows;
 
-    // Para cada meta, buscar suas tarefas
+    // Para cada meta, buscar suas tarefas e tags
     for (let goal of goals) {
       const tasksResult = await pool.query(
         'SELECT * FROM goal_tasks WHERE goal_id = $1 ORDER BY display_order ASC, created_at ASC',
         [goal.id]
       );
       goal.tasks = tasksResult.rows;
+
+      const tagsResult = await pool.query(
+        `SELECT t.id, t.name, t.color
+         FROM goal_tags gt
+         JOIN tags t ON gt.tag_id = t.id
+         WHERE gt.goal_id = $1
+         ORDER BY t.name`,
+        [goal.id]
+      );
+      goal.tags = tagsResult.rows;
     }
 
     res.json(goals);
@@ -829,6 +882,36 @@ app.post('/api/goals', async (req, res) => {
   } catch (error) {
     console.error('Erro ao criar meta:', error);
     res.status(500).json({ error: 'Erro ao criar meta' });
+  }
+});
+
+// Reordenar metas - DEVE VIR ANTES DE /:id
+app.put('/api/goals/reorder', async (req, res) => {
+  const { orders } = req.body; // Array de { id, display_order }
+
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const item of orders) {
+        await client.query(
+          'UPDATE goals SET display_order = $1 WHERE id = $2',
+          [item.display_order, item.id]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json({ message: 'Ordem das metas atualizada com sucesso' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Erro ao reordenar metas:', error);
+    res.status(500).json({ error: 'Erro ao reordenar metas' });
   }
 });
 
@@ -975,13 +1058,45 @@ async function recalculateGoalProgress(goalId) {
 // Listar todos os sonhos
 app.get('/api/dreams', async (req, res) => {
   try {
-    const result = await pool.query(
+    // Buscar todos os sonhos
+    const dreamsResult = await pool.query(
       `SELECT d.*, la.name as life_area_name, la.color as life_area_color
        FROM dreams d
        LEFT JOIN life_areas la ON d.life_area_id = la.id
-       ORDER BY d.created_at DESC`
+       ORDER BY d.display_order ASC NULLS LAST, d.created_at DESC`
     );
-    res.json(result.rows);
+
+    // Para cada sonho, buscar as metas vinculadas e tags
+    const dreams = await Promise.all(
+      dreamsResult.rows.map(async (dream) => {
+        const goalsResult = await pool.query(
+          `SELECT g.id, g.title, g.progress, la.color as life_area_color
+           FROM dream_goals dg
+           JOIN goals g ON dg.goal_id = g.id
+           LEFT JOIN life_areas la ON g.life_area_id = la.id
+           WHERE dg.dream_id = $1
+           ORDER BY g.title`,
+          [dream.id]
+        );
+
+        const tagsResult = await pool.query(
+          `SELECT t.id, t.name, t.color
+           FROM dream_tags dt
+           JOIN tags t ON dt.tag_id = t.id
+           WHERE dt.dream_id = $1
+           ORDER BY t.name`,
+          [dream.id]
+        );
+
+        return {
+          ...dream,
+          linked_goals: goalsResult.rows,
+          tags: tagsResult.rows
+        };
+      })
+    );
+
+    res.json(dreams);
   } catch (error) {
     console.error('Erro ao buscar sonhos:', error);
     res.status(500).json({ error: 'Erro ao buscar sonhos' });
@@ -1002,6 +1117,36 @@ app.post('/api/dreams', async (req, res) => {
   } catch (error) {
     console.error('Erro ao criar sonho:', error);
     res.status(500).json({ error: 'Erro ao criar sonho' });
+  }
+});
+
+// Reordenar sonhos - DEVE VIR ANTES DE /:id
+app.put('/api/dreams/reorder', async (req, res) => {
+  const { orders } = req.body; // Array de { id, display_order }
+
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const item of orders) {
+        await client.query(
+          'UPDATE dreams SET display_order = $1 WHERE id = $2',
+          [item.display_order, item.id]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json({ message: 'Ordem dos sonhos atualizada com sucesso' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Erro ao reordenar sonhos:', error);
+    res.status(500).json({ error: 'Erro ao reordenar sonhos' });
   }
 });
 
@@ -1045,6 +1190,137 @@ app.delete('/api/dreams/:id', async (req, res) => {
   }
 });
 
+// Vincular meta a um sonho
+app.post('/api/dreams/:dreamId/goals/:goalId', async (req, res) => {
+  const { dreamId, goalId } = req.params;
+
+  try {
+    await pool.query(
+      'INSERT INTO dream_goals (dream_id, goal_id) VALUES ($1, $2) ON CONFLICT (dream_id, goal_id) DO NOTHING',
+      [dreamId, goalId]
+    );
+
+    res.json({ message: 'Meta vinculada ao sonho com sucesso' });
+  } catch (error) {
+    console.error('Erro ao vincular meta ao sonho:', error);
+    res.status(500).json({ error: 'Erro ao vincular meta ao sonho' });
+  }
+});
+
+// Desvincular meta de um sonho
+app.delete('/api/dreams/:dreamId/goals/:goalId', async (req, res) => {
+  const { dreamId, goalId } = req.params;
+
+  try {
+    await pool.query(
+      'DELETE FROM dream_goals WHERE dream_id = $1 AND goal_id = $2',
+      [dreamId, goalId]
+    );
+
+    res.json({ message: 'Meta desvinculada do sonho com sucesso' });
+  } catch (error) {
+    console.error('Erro ao desvincular meta do sonho:', error);
+    res.status(500).json({ error: 'Erro ao desvincular meta do sonho' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE TAGS
+// ================================
+
+// Listar todas as tags
+app.get('/api/tags', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM tags ORDER BY name ASC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar tags:', error);
+    res.status(500).json({ error: 'Erro ao buscar tags' });
+  }
+});
+
+// Criar nova tag
+app.post('/api/tags', async (req, res) => {
+  const { name, color } = req.body;
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO tags (name, color) VALUES ($1, $2) RETURNING *',
+      [name, color || '#6b7280']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar tag:', error);
+    res.status(500).json({ error: 'Erro ao criar tag' });
+  }
+});
+
+// Vincular tag a uma meta
+app.post('/api/goals/:goalId/tags/:tagId', async (req, res) => {
+  const { goalId, tagId } = req.params;
+
+  try {
+    await pool.query(
+      'INSERT INTO goal_tags (goal_id, tag_id) VALUES ($1, $2) ON CONFLICT (goal_id, tag_id) DO NOTHING',
+      [goalId, tagId]
+    );
+    res.json({ message: 'Tag vinculada à meta com sucesso' });
+  } catch (error) {
+    console.error('Erro ao vincular tag à meta:', error);
+    res.status(500).json({ error: 'Erro ao vincular tag à meta' });
+  }
+});
+
+// Desvincular tag de uma meta
+app.delete('/api/goals/:goalId/tags/:tagId', async (req, res) => {
+  const { goalId, tagId } = req.params;
+
+  try {
+    await pool.query(
+      'DELETE FROM goal_tags WHERE goal_id = $1 AND tag_id = $2',
+      [goalId, tagId]
+    );
+    res.json({ message: 'Tag desvinculada da meta com sucesso' });
+  } catch (error) {
+    console.error('Erro ao desvincular tag da meta:', error);
+    res.status(500).json({ error: 'Erro ao desvincular tag da meta' });
+  }
+});
+
+// Vincular tag a um sonho
+app.post('/api/dreams/:dreamId/tags/:tagId', async (req, res) => {
+  const { dreamId, tagId } = req.params;
+
+  try {
+    await pool.query(
+      'INSERT INTO dream_tags (dream_id, tag_id) VALUES ($1, $2) ON CONFLICT (dream_id, tag_id) DO NOTHING',
+      [dreamId, tagId]
+    );
+    res.json({ message: 'Tag vinculada ao sonho com sucesso' });
+  } catch (error) {
+    console.error('Erro ao vincular tag ao sonho:', error);
+    res.status(500).json({ error: 'Erro ao vincular tag ao sonho' });
+  }
+});
+
+// Desvincular tag de um sonho
+app.delete('/api/dreams/:dreamId/tags/:tagId', async (req, res) => {
+  const { dreamId, tagId } = req.params;
+
+  try {
+    await pool.query(
+      'DELETE FROM dream_tags WHERE dream_id = $1 AND tag_id = $2',
+      [dreamId, tagId]
+    );
+    res.json({ message: 'Tag desvinculada do sonho com sucesso' });
+  } catch (error) {
+    console.error('Erro ao desvincular tag do sonho:', error);
+    res.status(500).json({ error: 'Erro ao desvincular tag do sonho' });
+  }
+});
+
 // ================================
 // ENDPOINTS DE ROTINAS
 // ================================
@@ -1053,7 +1329,7 @@ app.delete('/api/dreams/:id', async (req, res) => {
 app.get('/api/routines', async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT * FROM routines ORDER BY period, created_at DESC'
+      'SELECT * FROM routines ORDER BY period, display_order ASC, created_at DESC'
     );
     res.json(result.rows);
   } catch (error) {
@@ -1063,53 +1339,186 @@ app.get('/api/routines', async (req, res) => {
 });
 
 // Criar uma nova rotina
-app.post('/api/routines', async (req, res) => {
+app.post('/api/routines', authenticateToken, async (req, res) => {
+  console.log('📝 [POST /api/routines] Recebido req.body:', JSON.stringify(req.body, null, 2));
+
   const { name, period, frequency, specific_days, times_per_week, icon, color, add_to_habit_tracking } = req.body;
+  const user_id = req.user.userId;
+
+  console.log('📝 [POST /api/routines] add_to_habit_tracking =', add_to_habit_tracking);
+  console.log('📝 [POST /api/routines] Tipo de add_to_habit_tracking:', typeof add_to_habit_tracking);
 
   try {
     const result = await pool.query(
-      `INSERT INTO routines (name, period, frequency, specific_days, times_per_week, icon, color, add_to_habit_tracking, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) RETURNING *`,
-      [name, period, frequency, specific_days || null, times_per_week || null, icon || null, color || '#8b5cf6', add_to_habit_tracking || false]
+      `INSERT INTO routines (name, period, frequency, specific_days, times_per_week, icon, color, add_to_habit_tracking, is_active, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9) RETURNING *`,
+      [name, period, frequency, specific_days || null, times_per_week || null, icon || null, color || '#8b5cf6', add_to_habit_tracking || false, user_id]
     );
-    res.status(201).json(result.rows[0]);
+
+    const routine = result.rows[0];
+    console.log('✅ [POST /api/routines] Rotina criada:', routine);
+
+    // Se add_to_habit_tracking = true, criar automaticamente um hábito vinculado
+    if (add_to_habit_tracking) {
+      console.log('🔄 [POST /api/routines] Tentando criar hábito automaticamente...');
+      try {
+        const habitResult = await pool.query(
+          `INSERT INTO habits (routine_id, name, period, frequency, specific_days, times_per_week, start_date, icon, color, is_active, user_id)
+           VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE, $7, $8, true, $9) RETURNING *`,
+          [routine.id, name, period, frequency, specific_days || null, times_per_week || null, icon || null, color || '#8b5cf6', user_id]
+        );
+        console.log(`✅ [POST /api/routines] Hábito criado automaticamente:`, habitResult.rows[0]);
+      } catch (habitError) {
+        console.error('❌ [POST /api/routines] Erro ao criar hábito automaticamente:', habitError.message);
+        console.error('❌ [POST /api/routines] Stack completo:', habitError);
+        // Não falha a criação da rotina se o hábito falhar
+      }
+    } else {
+      console.log('ℹ️ [POST /api/routines] add_to_habit_tracking é false, não criando hábito');
+    }
+
+    res.status(201).json(routine);
   } catch (error) {
-    console.error('Erro ao criar rotina:', error);
+    console.error('❌ [POST /api/routines] Erro ao criar rotina:', error);
     res.status(500).json({ error: 'Erro ao criar rotina' });
   }
 });
 
-// Atualizar uma rotina
-app.put('/api/routines/:id', async (req, res) => {
-  const { id } = req.params;
-  const { name, period, frequency, specific_days, times_per_week, icon, color, add_to_habit_tracking, is_active } = req.body;
+// Reordenar rotinas - IMPORTANTE: Deve vir ANTES de PUT /api/routines/:id
+app.put('/api/routines/reorder', authenticateToken, async (req, res) => {
+  console.log('🔄 [PUT /api/routines/reorder] Recebido req.body:', JSON.stringify(req.body, null, 2));
+  const { orders } = req.body; // Array de { id, display_order }
+  const user_id = req.user.userId;
+
+  if (!Array.isArray(orders)) {
+    return res.status(400).json({ error: 'orders deve ser um array' });
+  }
 
   try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const item of orders) {
+        console.log(`🔄 [PUT /api/routines/reorder] Atualizando rotina ${item.id} para display_order ${item.display_order}`);
+        await client.query(
+          'UPDATE routines SET display_order = $1 WHERE id = $2 AND user_id = $3',
+          [item.display_order, item.id, user_id]
+        );
+      }
+
+      await client.query('COMMIT');
+      console.log('✅ [PUT /api/routines/reorder] Ordem atualizada com sucesso');
+      res.json({ message: 'Ordem das rotinas atualizada com sucesso' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('❌ [PUT /api/routines/reorder] Erro ao reordenar rotinas:', error);
+    res.status(500).json({ error: 'Erro ao reordenar rotinas' });
+  }
+});
+
+// Atualizar uma rotina
+app.put('/api/routines/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const user_id = req.user.userId;
+  console.log('📝 [PUT /api/routines/:id] ID:', id);
+  console.log('📝 [PUT /api/routines/:id] Recebido req.body:', JSON.stringify(req.body, null, 2));
+
+  const { name, period, frequency, specific_days, times_per_week, icon, color, add_to_habit_tracking, is_active } = req.body;
+
+  console.log('📝 [PUT /api/routines/:id] add_to_habit_tracking =', add_to_habit_tracking);
+  console.log('📝 [PUT /api/routines/:id] Tipo de add_to_habit_tracking:', typeof add_to_habit_tracking);
+
+  try {
+    // Buscar o valor anterior de add_to_habit_tracking
+    const previousRoutine = await pool.query('SELECT add_to_habit_tracking FROM routines WHERE id = $1 AND user_id = $2', [id, user_id]);
+    const wasTrackingBefore = previousRoutine.rows[0]?.add_to_habit_tracking || false;
+
+    console.log('📝 [PUT /api/routines/:id] wasTrackingBefore =', wasTrackingBefore);
+    console.log('📝 [PUT /api/routines/:id] Mudança:', wasTrackingBefore, '→', add_to_habit_tracking);
+
     const result = await pool.query(
       `UPDATE routines
        SET name = $1, period = $2, frequency = $3, specific_days = $4, times_per_week = $5,
            icon = $6, color = $7, add_to_habit_tracking = $8, is_active = $9, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $10 RETURNING *`,
-      [name, period, frequency, specific_days || null, times_per_week || null, icon || null, color, add_to_habit_tracking, is_active, id]
+       WHERE id = $10 AND user_id = $11 RETURNING *`,
+      [name, period, frequency, specific_days || null, times_per_week || null, icon || null, color, add_to_habit_tracking, is_active, id, user_id]
     );
 
     if (result.rows.length === 0) {
+      console.log('❌ [PUT /api/routines/:id] Rotina não encontrada');
       return res.status(404).json({ error: 'Rotina não encontrada' });
     }
 
-    res.json(result.rows[0]);
+    const routine = result.rows[0];
+    console.log('✅ [PUT /api/routines/:id] Rotina atualizada:', routine);
+
+    // Se mudou de false para true, criar hábito
+    if (!wasTrackingBefore && add_to_habit_tracking) {
+      console.log('🔄 [PUT /api/routines/:id] Criando hábito (false → true)...');
+      try {
+        const habitResult = await pool.query(
+          `INSERT INTO habits (routine_id, name, period, frequency, specific_days, times_per_week, start_date, icon, color, is_active, user_id)
+           VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE, $7, $8, true, $9) RETURNING *`,
+          [routine.id, name, period, frequency, specific_days || null, times_per_week || null, icon || null, color || '#8b5cf6', user_id]
+        );
+        console.log(`✅ [PUT /api/routines/:id] Hábito criado:`, habitResult.rows[0]);
+      } catch (habitError) {
+        console.error('❌ [PUT /api/routines/:id] Erro ao criar hábito:', habitError.message);
+        console.error('❌ [PUT /api/routines/:id] Stack completo:', habitError);
+      }
+    }
+    // Se mudou de true para false, desativar o hábito vinculado
+    else if (wasTrackingBefore && !add_to_habit_tracking) {
+      console.log('🔄 [PUT /api/routines/:id] Desativando hábito (true → false)...');
+      try {
+        await pool.query(
+          `UPDATE habits SET is_active = false WHERE routine_id = $1 AND user_id = $2`,
+          [routine.id, user_id]
+        );
+        console.log(`✅ [PUT /api/routines/:id] Hábito desativado`);
+      } catch (habitError) {
+        console.error('❌ [PUT /api/routines/:id] Erro ao desativar hábito:', habitError.message);
+      }
+    }
+    // Se continua true, atualizar o hábito existente
+    else if (add_to_habit_tracking) {
+      console.log('🔄 [PUT /api/routines/:id] Atualizando hábito existente (true → true)...');
+      try {
+        const updateResult = await pool.query(
+          `UPDATE habits
+           SET name = $1, period = $2, frequency = $3, specific_days = $4, times_per_week = $5,
+               icon = $6, color = $7, is_active = $8
+           WHERE routine_id = $9 AND user_id = $10 RETURNING *`,
+          [name, period, frequency, specific_days || null, times_per_week || null, icon || null, color, is_active, routine.id, user_id]
+        );
+        console.log(`✅ [PUT /api/routines/:id] Hábito atualizado:`, updateResult.rows[0]);
+      } catch (habitError) {
+        console.error('❌ [PUT /api/routines/:id] Erro ao atualizar hábito:', habitError.message);
+      }
+    } else {
+      console.log('ℹ️ [PUT /api/routines/:id] Nenhuma ação necessária para hábitos (false → false)');
+    }
+
+    res.json(routine);
   } catch (error) {
-    console.error('Erro ao atualizar rotina:', error);
+    console.error('❌ [PUT /api/routines/:id] Erro ao atualizar rotina:', error);
     res.status(500).json({ error: 'Erro ao atualizar rotina' });
   }
 });
 
 // Excluir uma rotina
-app.delete('/api/routines/:id', async (req, res) => {
+app.delete('/api/routines/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
+  const user_id = req.user.userId;
 
   try {
-    const result = await pool.query('DELETE FROM routines WHERE id = $1 RETURNING id', [id]);
+    const result = await pool.query('DELETE FROM routines WHERE id = $1 AND user_id = $2 RETURNING id', [id, user_id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Rotina não encontrada' });
@@ -1156,31 +1565,72 @@ app.get('/api/routine-completions', async (req, res) => {
 });
 
 // Toggle completion de rotina (criar ou atualizar)
-app.post('/api/routine-completions/toggle', async (req, res) => {
+app.post('/api/routine-completions/toggle', authenticateToken, async (req, res) => {
   const { routine_id, completion_date } = req.body;
+  const user_id = req.user.userId;
 
   try {
     // Verificar se já existe
     const existing = await pool.query(
-      'SELECT * FROM routine_completions WHERE routine_id = $1 AND completion_date = $2',
-      [routine_id, completion_date]
+      'SELECT * FROM routine_completions WHERE routine_id = $1 AND completion_date = $2 AND user_id = $3',
+      [routine_id, completion_date, user_id]
     );
+
+    let result;
+    let newCompletedState;
 
     if (existing.rows.length > 0) {
       // Toggle o valor de completed
-      const result = await pool.query(
-        'UPDATE routine_completions SET completed = NOT completed WHERE routine_id = $1 AND completion_date = $2 RETURNING *',
-        [routine_id, completion_date]
+      result = await pool.query(
+        'UPDATE routine_completions SET completed = NOT completed WHERE routine_id = $1 AND completion_date = $2 AND user_id = $3 RETURNING *',
+        [routine_id, completion_date, user_id]
       );
-      res.json(result.rows[0]);
+      newCompletedState = result.rows[0].completed;
     } else {
       // Criar novo
-      const result = await pool.query(
-        'INSERT INTO routine_completions (routine_id, completion_date, completed) VALUES ($1, $2, true) RETURNING *',
-        [routine_id, completion_date]
+      result = await pool.query(
+        'INSERT INTO routine_completions (routine_id, completion_date, completed, user_id) VALUES ($1, $2, true, $3) RETURNING *',
+        [routine_id, completion_date, user_id]
       );
-      res.status(201).json(result.rows[0]);
+      newCompletedState = true;
     }
+
+    console.log(`✅ [Toggle Routine] routine_id=${routine_id}, date=${completion_date}, completed=${newCompletedState}`);
+
+    // 🔗 SINCRONIZAR COM HÁBITO: Se a rotina tem hábito vinculado, sincronizar
+    const habitCheck = await pool.query(
+      'SELECT id FROM habits WHERE routine_id = $1 AND is_active = true',
+      [routine_id]
+    );
+
+    if (habitCheck.rows.length > 0) {
+      const habit_id = habitCheck.rows[0].id;
+      console.log(`🔗 [Sincronizar] Rotina ${routine_id} → Hábito ${habit_id}`);
+
+      // Verificar se já existe completion do hábito
+      const habitCompletion = await pool.query(
+        'SELECT * FROM habit_completions WHERE habit_id = $1 AND completion_date = $2 AND user_id = $3',
+        [habit_id, completion_date, user_id]
+      );
+
+      if (habitCompletion.rows.length > 0) {
+        // Atualizar para o mesmo estado
+        await pool.query(
+          'UPDATE habit_completions SET completed = $1 WHERE habit_id = $2 AND completion_date = $3 AND user_id = $4',
+          [newCompletedState, habit_id, completion_date, user_id]
+        );
+        console.log(`✅ [Sincronizar] Hábito ${habit_id} atualizado: ${newCompletedState}`);
+      } else {
+        // Criar novo completion do hábito com o mesmo estado
+        await pool.query(
+          'INSERT INTO habit_completions (habit_id, completion_date, completed, user_id) VALUES ($1, $2, $3, $4)',
+          [habit_id, completion_date, newCompletedState, user_id]
+        );
+        console.log(`✅ [Sincronizar] Hábito ${habit_id} criado: ${newCompletedState}`);
+      }
+    }
+
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Erro ao toggle completion:', error);
     res.status(500).json({ error: 'Erro ao toggle completion' });
@@ -1223,14 +1673,15 @@ app.get('/api/habits', async (req, res) => {
 });
 
 // Criar um novo hábito
-app.post('/api/habits', async (req, res) => {
+app.post('/api/habits', authenticateToken, async (req, res) => {
   const { routine_id, name, period, frequency, specific_days, times_per_week, start_date, end_date, icon, color } = req.body;
+  const user_id = req.user.userId;
 
   try {
     const result = await pool.query(
-      `INSERT INTO habits (routine_id, name, period, frequency, specific_days, times_per_week, start_date, end_date, icon, color, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true) RETURNING *`,
-      [routine_id || null, name, period || null, frequency, specific_days || null, times_per_week || null, start_date, end_date || null, icon || null, color || '#8b5cf6']
+      `INSERT INTO habits (routine_id, name, period, frequency, specific_days, times_per_week, start_date, end_date, icon, color, is_active, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11) RETURNING *`,
+      [routine_id || null, name, period || null, frequency, specific_days || null, times_per_week || null, start_date, end_date || null, icon || null, color || '#8b5cf6', user_id]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -1240,9 +1691,10 @@ app.post('/api/habits', async (req, res) => {
 });
 
 // Atualizar um hábito
-app.put('/api/habits/:id', async (req, res) => {
+app.put('/api/habits/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { routine_id, name, period, frequency, specific_days, times_per_week, start_date, end_date, icon, color, is_active } = req.body;
+  const user_id = req.user.userId;
 
   try {
     const result = await pool.query(
@@ -1250,8 +1702,8 @@ app.put('/api/habits/:id', async (req, res) => {
        SET routine_id = $1, name = $2, period = $3, frequency = $4, specific_days = $5,
            times_per_week = $6, start_date = $7, end_date = $8, icon = $9, color = $10,
            is_active = $11, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $12 RETURNING *`,
-      [routine_id || null, name, period || null, frequency, specific_days || null, times_per_week || null, start_date, end_date || null, icon || null, color, is_active, id]
+       WHERE id = $12 AND user_id = $13 RETURNING *`,
+      [routine_id || null, name, period || null, frequency, specific_days || null, times_per_week || null, start_date, end_date || null, icon || null, color, is_active, id, user_id]
     );
 
     if (result.rows.length === 0) {
@@ -1308,11 +1760,12 @@ app.patch('/api/habits/:id/unarchive', async (req, res) => {
 });
 
 // Excluir um hábito
-app.delete('/api/habits/:id', async (req, res) => {
+app.delete('/api/habits/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
+  const user_id = req.user.userId;
 
   try {
-    const result = await pool.query('DELETE FROM habits WHERE id = $1 RETURNING id', [id]);
+    const result = await pool.query('DELETE FROM habits WHERE id = $1 AND user_id = $2 RETURNING id', [id, user_id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Hábito não encontrado' });
@@ -1359,31 +1812,72 @@ app.get('/api/habit-completions', async (req, res) => {
 });
 
 // Toggle completion de hábito
-app.post('/api/habit-completions/toggle', async (req, res) => {
+app.post('/api/habit-completions/toggle', authenticateToken, async (req, res) => {
   const { habit_id, completion_date } = req.body;
+  const user_id = req.user.userId;
 
   try {
     // Verificar se já existe
     const existing = await pool.query(
-      'SELECT * FROM habit_completions WHERE habit_id = $1 AND completion_date = $2',
-      [habit_id, completion_date]
+      'SELECT * FROM habit_completions WHERE habit_id = $1 AND completion_date = $2 AND user_id = $3',
+      [habit_id, completion_date, user_id]
     );
+
+    let result;
+    let newCompletedState;
 
     if (existing.rows.length > 0) {
       // Toggle o valor de completed
-      const result = await pool.query(
-        'UPDATE habit_completions SET completed = NOT completed WHERE habit_id = $1 AND completion_date = $2 RETURNING *',
-        [habit_id, completion_date]
+      result = await pool.query(
+        'UPDATE habit_completions SET completed = NOT completed WHERE habit_id = $1 AND completion_date = $2 AND user_id = $3 RETURNING *',
+        [habit_id, completion_date, user_id]
       );
-      res.json(result.rows[0]);
+      newCompletedState = result.rows[0].completed;
     } else {
       // Criar novo
-      const result = await pool.query(
-        'INSERT INTO habit_completions (habit_id, completion_date, completed) VALUES ($1, $2, true) RETURNING *',
-        [habit_id, completion_date]
+      result = await pool.query(
+        'INSERT INTO habit_completions (habit_id, completion_date, completed, user_id) VALUES ($1, $2, true, $3) RETURNING *',
+        [habit_id, completion_date, user_id]
       );
-      res.status(201).json(result.rows[0]);
+      newCompletedState = true;
     }
+
+    console.log(`✅ [Toggle Habit] habit_id=${habit_id}, date=${completion_date}, completed=${newCompletedState}`);
+
+    // 🔗 SINCRONIZAR COM ROTINA: Se o hábito tem rotina vinculada, sincronizar
+    const routineCheck = await pool.query(
+      'SELECT routine_id FROM habits WHERE id = $1 AND routine_id IS NOT NULL',
+      [habit_id]
+    );
+
+    if (routineCheck.rows.length > 0) {
+      const routine_id = routineCheck.rows[0].routine_id;
+      console.log(`🔗 [Sincronizar] Hábito ${habit_id} → Rotina ${routine_id}`);
+
+      // Verificar se já existe completion da rotina
+      const routineCompletion = await pool.query(
+        'SELECT * FROM routine_completions WHERE routine_id = $1 AND completion_date = $2 AND user_id = $3',
+        [routine_id, completion_date, user_id]
+      );
+
+      if (routineCompletion.rows.length > 0) {
+        // Atualizar para o mesmo estado
+        await pool.query(
+          'UPDATE routine_completions SET completed = $1 WHERE routine_id = $2 AND completion_date = $3 AND user_id = $4',
+          [newCompletedState, routine_id, completion_date, user_id]
+        );
+        console.log(`✅ [Sincronizar] Rotina ${routine_id} atualizada: ${newCompletedState}`);
+      } else {
+        // Criar novo completion da rotina com o mesmo estado
+        await pool.query(
+          'INSERT INTO routine_completions (routine_id, completion_date, completed, user_id) VALUES ($1, $2, $3, $4)',
+          [routine_id, completion_date, newCompletedState, user_id]
+        );
+        console.log(`✅ [Sincronizar] Rotina ${routine_id} criada: ${newCompletedState}`);
+      }
+    }
+
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Erro ao toggle completion de hábito:', error);
     res.status(500).json({ error: 'Erro ao toggle completion de hábito' });
@@ -1529,6 +2023,1262 @@ app.delete('/api/moods/:date', async (req, res) => {
   } catch (error) {
     console.error('Erro ao excluir humor:', error);
     res.status(500).json({ error: 'Erro ao excluir humor' });
+  }
+});
+
+app.get('/api/cycle-settings', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM cycle_settings LIMIT 1');
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Configurações não encontradas' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar configurações do ciclo:', error);
+    res.status(500).json({ error: 'Erro ao buscar configurações' });
+  }
+});
+
+app.post('/api/cycle-settings', async (req, res) => {
+  const { last_period_start_date, average_cycle_length, average_period_length, luteal_phase_length } = req.body;
+
+  try {
+    const existing = await pool.query('SELECT id FROM cycle_settings LIMIT 1');
+
+    if (existing.rows.length > 0) {
+      const result = await pool.query(
+        `UPDATE cycle_settings SET
+          last_period_start_date = $1,
+          average_cycle_length = $2,
+          average_period_length = $3,
+          luteal_phase_length = $4,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5 RETURNING *`,
+        [last_period_start_date, average_cycle_length, average_period_length, luteal_phase_length, existing.rows[0].id]
+      );
+      res.json(result.rows[0]);
+    } else {
+      const result = await pool.query(
+        `INSERT INTO cycle_settings (last_period_start_date, average_cycle_length, average_period_length, luteal_phase_length)
+        VALUES ($1, $2, $3, $4) RETURNING *`,
+        [last_period_start_date, average_cycle_length, average_period_length, luteal_phase_length]
+      );
+      res.status(201).json(result.rows[0]);
+    }
+  } catch (error) {
+    console.error('Erro ao salvar configurações do ciclo:', error);
+    res.status(500).json({ error: 'Erro ao salvar configurações' });
+  }
+});
+
+app.get('/api/cycle-records', async (req, res) => {
+  const { start_date, end_date } = req.query;
+
+  try {
+    let query = 'SELECT * FROM cycle_records';
+    const params = [];
+
+    if (start_date && end_date) {
+      query += ' WHERE record_date BETWEEN $1 AND $2';
+      params.push(start_date, end_date);
+    } else if (start_date) {
+      query += ' WHERE record_date >= $1';
+      params.push(start_date);
+    } else if (end_date) {
+      query += ' WHERE record_date <= $1';
+      params.push(end_date);
+    }
+
+    query += ' ORDER BY record_date DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar registros do ciclo:', error);
+    res.status(500).json({ error: 'Erro ao buscar registros' });
+  }
+});
+
+app.get('/api/cycle-records/:date', async (req, res) => {
+  const { date } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM cycle_records WHERE record_date = $1',
+      [date]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Registro não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar registro:', error);
+    res.status(500).json({ error: 'Erro ao buscar registro' });
+  }
+});
+
+app.post('/api/cycle-records', async (req, res) => {
+  const { record_date, flow_level, symptoms, notes } = req.body;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO cycle_records (record_date, flow_level, symptoms, notes)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (record_date) DO UPDATE SET
+         flow_level = EXCLUDED.flow_level,
+         symptoms = EXCLUDED.symptoms,
+         notes = EXCLUDED.notes,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [record_date, flow_level || 'none', symptoms || [], notes || null]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar registro do ciclo:', error);
+    res.status(500).json({ error: 'Erro ao criar registro' });
+  }
+});
+
+app.put('/api/cycle-records/:date', async (req, res) => {
+  const { date } = req.params;
+  const { flow_level, symptoms, notes } = req.body;
+
+  try {
+    const result = await pool.query(
+      `UPDATE cycle_records SET
+         flow_level = $1,
+         symptoms = $2,
+         notes = $3,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE record_date = $4 RETURNING *`,
+      [flow_level || 'none', symptoms || [], notes || null, date]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Registro não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar registro:', error);
+    res.status(500).json({ error: 'Erro ao atualizar registro' });
+  }
+});
+
+app.delete('/api/cycle-records/:date', async (req, res) => {
+  const { date } = req.params;
+
+  try {
+    const result = await pool.query(
+      'DELETE FROM cycle_records WHERE record_date = $1 RETURNING record_date',
+      [date]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Registro não encontrado' });
+    }
+
+    res.json({ message: 'Registro excluído com sucesso', date: result.rows[0].record_date });
+  } catch (error) {
+    console.error('Erro ao excluir registro:', error);
+    res.status(500).json({ error: 'Erro ao excluir registro' });
+  }
+});
+
+app.get('/api/cycle-stats', async (req, res) => {
+  try {
+    const settings = await pool.query('SELECT * FROM cycle_settings LIMIT 1');
+
+    if (settings.rows.length === 0) {
+      return res.status(404).json({ error: 'Configurações não encontradas' });
+    }
+
+    const config = settings.rows[0];
+    const lastPeriodDate = new Date(config.last_period_start_date);
+    const today = new Date();
+
+    const daysSinceLastPeriod = Math.floor((today - lastPeriodDate) / (1000 * 60 * 60 * 24));
+    const currentCycleDay = (daysSinceLastPeriod % config.average_cycle_length) + 1;
+    const daysUntilNextPeriod = config.average_cycle_length - (daysSinceLastPeriod % config.average_cycle_length);
+
+    const ovulationDay = config.average_cycle_length - config.luteal_phase_length;
+    const fertileWindowStart = ovulationDay - 5;
+    const fertileWindowEnd = ovulationDay + 1;
+    const pmsStart = config.average_cycle_length - 7;
+
+    const recentRecords = await pool.query(
+      `SELECT * FROM cycle_records
+       WHERE record_date >= $1
+       ORDER BY record_date DESC`,
+      [new Date(today.getTime() - (90 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]]
+    );
+
+    const symptomsCount = {};
+    recentRecords.rows.forEach(record => {
+      if (record.symptoms) {
+        record.symptoms.forEach(symptom => {
+          symptomsCount[symptom] = (symptomsCount[symptom] || 0) + 1;
+        });
+      }
+    });
+
+    const topSymptoms = Object.entries(symptomsCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([symptom]) => symptom);
+
+    const cyclesData = await pool.query(
+      `SELECT record_date, flow_level FROM cycle_records
+       WHERE flow_level != 'none'
+       ORDER BY record_date DESC
+       LIMIT 180`
+    );
+
+    const cycles = [];
+    let currentCycle = [];
+
+    cyclesData.rows.forEach(record => {
+      if (currentCycle.length === 0 ||
+          (new Date(currentCycle[currentCycle.length - 1].record_date) - new Date(record.record_date)) / (1000 * 60 * 60 * 24) <= 10) {
+        currentCycle.push(record);
+      } else {
+        if (currentCycle.length > 0) cycles.push(currentCycle);
+        currentCycle = [record];
+      }
+    });
+    if (currentCycle.length > 0) cycles.push(currentCycle);
+
+    const cycleLengths = [];
+    for (let i = 0; i < cycles.length - 1; i++) {
+      const startDate1 = new Date(cycles[i][cycles[i].length - 1].record_date);
+      const startDate2 = new Date(cycles[i + 1][cycles[i + 1].length - 1].record_date);
+      const length = Math.floor((startDate1 - startDate2) / (1000 * 60 * 60 * 24));
+      if (length > 15 && length < 45) cycleLengths.push(length);
+    }
+
+    const variance = cycleLengths.length > 1 ?
+      Math.max(...cycleLengths) - Math.min(...cycleLengths) : 0;
+    const isRegular = variance <= 7;
+
+    res.json({
+      currentCycleDay,
+      daysUntilNextPeriod,
+      ovulationDay,
+      fertileWindowStart,
+      fertileWindowEnd,
+      pmsStart,
+      topSymptoms,
+      isRegular,
+      variance,
+      averagePeriodLength: config.average_period_length,
+      averageCycleLength: config.average_cycle_length,
+      lastPeriodStartDate: config.last_period_start_date,
+    });
+  } catch (error) {
+    console.error('Erro ao calcular estatísticas:', error);
+    res.status(500).json({ error: 'Erro ao calcular estatísticas' });
+  }
+});
+
+// ==================== CALENDAR EVENTS ====================
+
+// GET /api/calendar-events - Buscar eventos (com filtro opcional por intervalo de datas)
+app.get('/api/calendar-events', async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    let query = 'SELECT * FROM calendar_events';
+    const params = [];
+
+    if (start_date && end_date) {
+      query += ' WHERE event_date >= $1 AND event_date <= $2';
+      params.push(start_date, end_date);
+    } else if (start_date) {
+      query += ' WHERE event_date >= $1';
+      params.push(start_date);
+    } else if (end_date) {
+      query += ' WHERE event_date <= $1';
+      params.push(end_date);
+    }
+
+    query += ' ORDER BY event_date ASC, event_time ASC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar eventos:', error);
+    res.status(500).json({ error: 'Erro ao buscar eventos' });
+  }
+});
+
+// POST /api/calendar-events - Criar novo evento
+app.post('/api/calendar-events', async (req, res) => {
+  try {
+    const { event_date, event_time, description } = req.body;
+
+    if (!event_date || !event_time || !description) {
+      return res.status(400).json({ error: 'Data, hora e descrição são obrigatórios' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO calendar_events (event_date, event_time, description)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [event_date, event_time, description]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar evento:', error);
+    res.status(500).json({ error: 'Erro ao criar evento' });
+  }
+});
+
+// DELETE /api/calendar-events/:id - Deletar evento
+app.delete('/api/calendar-events/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM calendar_events WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Evento não encontrado' });
+    }
+
+    res.json({ message: 'Evento deletado com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar evento:', error);
+    res.status(500).json({ error: 'Erro ao deletar evento' });
+  }
+});
+
+// ==================== TODO LISTS ====================
+
+// GET /api/todo-lists - Buscar todas as listas de tarefas com seus itens
+app.get('/api/todo-lists', async (req, res) => {
+  try {
+    const listsResult = await pool.query(
+      'SELECT * FROM todo_lists ORDER BY display_order ASC, id ASC'
+    );
+
+    const lists = await Promise.all(
+      listsResult.rows.map(async (list) => {
+        const itemsResult = await pool.query(
+          'SELECT * FROM todo_list_items WHERE list_id = $1 ORDER BY display_order ASC, id ASC',
+          [list.id]
+        );
+        return {
+          ...list,
+          items: itemsResult.rows,
+        };
+      })
+    );
+
+    res.json(lists);
+  } catch (error) {
+    console.error('Erro ao buscar listas de tarefas:', error);
+    res.status(500).json({ error: 'Erro ao buscar listas de tarefas' });
+  }
+});
+
+// POST /api/todo-lists - Criar nova lista de tarefas
+app.post('/api/todo-lists', authenticateToken, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const user_id = req.user.userId;
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Nome da lista é obrigatório' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO todo_lists (name, user_id) VALUES ($1, $2) RETURNING *',
+      [name.trim(), user_id]
+    );
+
+    res.status(201).json({ ...result.rows[0], items: [] });
+  } catch (error) {
+    console.error('Erro ao criar lista de tarefas:', error);
+    res.status(500).json({ error: 'Erro ao criar lista de tarefas' });
+  }
+});
+
+// PUT /api/todo-lists/reorder - Reordenar listas (DEVE VIR ANTES DE /:id)
+app.put('/api/todo-lists/reorder', authenticateToken, async (req, res) => {
+  try {
+    const { orders } = req.body; // Array de { id, display_order }
+    const user_id = req.user.userId;
+
+    if (!Array.isArray(orders)) {
+      return res.status(400).json({ error: 'orders deve ser um array' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const item of orders) {
+        await client.query(
+          'UPDATE todo_lists SET display_order = $1 WHERE id = $2 AND user_id = $3',
+          [item.display_order, item.id, user_id]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json({ message: 'Ordem das listas atualizada com sucesso' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Erro ao reordenar listas:', error);
+    res.status(500).json({ error: 'Erro ao reordenar listas' });
+  }
+});
+
+// PUT /api/todo-lists/:id - Atualizar nome da lista
+app.put('/api/todo-lists/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+    const { name } = req.body;
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Nome da lista é obrigatório' });
+    }
+
+    const result = await pool.query(
+      'UPDATE todo_lists SET name = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND user_id = $3 RETURNING *',
+      [name.trim(), id, user_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Lista não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar lista:', error);
+    res.status(500).json({ error: 'Erro ao atualizar lista' });
+  }
+});
+
+// DELETE /api/todo-lists/:id - Deletar lista
+app.delete('/api/todo-lists/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+
+    const result = await pool.query(
+      'DELETE FROM todo_lists WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, user_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Lista não encontrada' });
+    }
+
+    res.json({ message: 'Lista deletada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar lista:', error);
+    res.status(500).json({ error: 'Erro ao deletar lista' });
+  }
+});
+
+// POST /api/todo-lists/:id/items - Adicionar item à lista
+app.post('/api/todo-lists/:id/items', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+    const { name } = req.body;
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Nome do item é obrigatório' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO todo_list_items (list_id, name, user_id) VALUES ($1, $2, $3) RETURNING *',
+      [id, name.trim(), user_id]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao adicionar item:', error);
+    res.status(500).json({ error: 'Erro ao adicionar item' });
+  }
+});
+
+// PUT /api/todo-list-items/reorder - Reordenar itens (DEVE VIR ANTES DE /:id)
+app.put('/api/todo-list-items/reorder', authenticateToken, async (req, res) => {
+  try {
+    const { orders } = req.body; // Array de { id, display_order }
+    const user_id = req.user.userId;
+
+    console.log('📋 [Reorder Items] Recebido orders:', orders);
+    console.log('📋 [Reorder Items] user_id:', user_id);
+
+    if (!Array.isArray(orders)) {
+      return res.status(400).json({ error: 'orders deve ser um array' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const item of orders) {
+        console.log(`📋 [Reorder Items] Atualizando item ${item.id} para display_order ${item.display_order}`);
+        const result = await client.query(
+          'UPDATE todo_list_items SET display_order = $1 WHERE id = $2 AND user_id = $3 RETURNING *',
+          [item.display_order, item.id, user_id]
+        );
+        console.log(`📋 [Reorder Items] Resultado:`, result.rows.length, 'linhas afetadas');
+      }
+
+      await client.query('COMMIT');
+      console.log('✅ [Reorder Items] Sucesso!');
+      res.json({ message: 'Ordem dos itens atualizada com sucesso' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Erro ao reordenar itens:', error);
+    res.status(500).json({ error: 'Erro ao reordenar itens' });
+  }
+});
+
+// PUT /api/todo-list-items/:id - Atualizar item
+app.put('/api/todo-list-items/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+    const { name, checked } = req.body;
+
+    console.log('📝 [Update Item] id:', id, 'user_id:', user_id);
+    console.log('📝 [Update Item] Body:', { name, checked });
+
+    const updates = [];
+    const values = [];
+    let paramCounter = 1;
+
+    if (name !== undefined) {
+      if (name.trim() === '') {
+        return res.status(400).json({ error: 'Nome do item não pode estar vazio' });
+      }
+      updates.push(`name = $${paramCounter}`);
+      values.push(name.trim());
+      paramCounter++;
+    }
+
+    if (checked !== undefined) {
+      updates.push(`checked = $${paramCounter}`);
+      values.push(checked ? 1 : 0);
+      paramCounter++;
+    }
+
+    if (updates.length === 0) {
+      console.log('❌ [Update Item] Nenhum campo para atualizar');
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    values.push(user_id);
+
+    console.log('📝 [Update Item] Updates:', updates);
+    console.log('📝 [Update Item] Values:', values);
+
+    const result = await pool.query(
+      `UPDATE todo_list_items SET ${updates.join(', ')} WHERE id = $${paramCounter} AND user_id = $${paramCounter + 1} RETURNING *`,
+      values
+    );
+
+    console.log('📝 [Update Item] Resultado:', result.rows.length, 'linhas afetadas');
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+
+    console.log('✅ [Update Item] Sucesso!');
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar item:', error);
+    res.status(500).json({ error: 'Erro ao atualizar item' });
+  }
+});
+
+// DELETE /api/todo-list-items/:id - Deletar item
+app.delete('/api/todo-list-items/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+
+    const result = await pool.query(
+      'DELETE FROM todo_list_items WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, user_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+
+    res.json({ message: 'Item deletado com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar item:', error);
+    res.status(500).json({ error: 'Erro ao deletar item' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE DOCUMENTOS
+// ================================
+
+// Listar categorias de documentos
+app.get('/api/document-categories', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM document_categories ORDER BY display_order ASC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar categorias:', error);
+    res.status(500).json({ error: 'Erro ao buscar categorias' });
+  }
+});
+
+// Criar nova categoria
+app.post('/api/document-categories', async (req, res) => {
+  try {
+    const { name, description, icon, color } = req.body;
+
+    // Buscar o próximo display_order
+    const maxOrderResult = await pool.query(
+      'SELECT MAX(display_order) as max_order FROM document_categories'
+    );
+    const nextOrder = (maxOrderResult.rows[0].max_order || 0) + 1;
+
+    const result = await pool.query(
+      `INSERT INTO document_categories (name, description, icon, color, display_order)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [name, description || null, icon, color, nextOrder]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar categoria:', error);
+    res.status(500).json({ error: 'Erro ao criar categoria' });
+  }
+});
+
+// Atualizar categoria
+app.put('/api/document-categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, color } = req.body;
+
+    const result = await pool.query(
+      `UPDATE document_categories
+       SET name = COALESCE($1, name),
+           description = $2,
+           color = COALESCE($3, color)
+       WHERE id = $4
+       RETURNING *`,
+      [name, description || null, color, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Categoria não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar categoria:', error);
+    res.status(500).json({ error: 'Erro ao atualizar categoria' });
+  }
+});
+
+// Excluir categoria
+app.delete('/api/document-categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se há documentos nesta categoria
+    const docsResult = await pool.query(
+      'SELECT COUNT(*) as count FROM documents WHERE category_id = $1',
+      [id]
+    );
+
+    if (parseInt(docsResult.rows[0].count) > 0) {
+      return res.status(400).json({
+        error: 'Não é possível excluir categoria com documentos. Mova ou exclua os documentos primeiro.'
+      });
+    }
+
+    const result = await pool.query(
+      'DELETE FROM document_categories WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Categoria não encontrada' });
+    }
+
+    res.json({ message: 'Categoria excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir categoria:', error);
+    res.status(500).json({ error: 'Erro ao excluir categoria' });
+  }
+});
+
+// Listar documentos (com filtro opcional por categoria)
+app.get('/api/documents', async (req, res) => {
+  try {
+    const { category_id, search } = req.query;
+
+    let query = `
+      SELECT d.*, dc.name as category_name, dc.color as category_color, dc.icon as category_icon
+      FROM documents d
+      LEFT JOIN document_categories dc ON d.category_id = dc.id
+    `;
+
+    const conditions = [];
+    const values = [];
+    let paramCounter = 1;
+
+    if (category_id) {
+      conditions.push(`d.category_id = $${paramCounter}`);
+      values.push(category_id);
+      paramCounter++;
+    }
+
+    if (search) {
+      conditions.push(`(d.name ILIKE $${paramCounter} OR d.description ILIKE $${paramCounter} OR $${paramCounter} = ANY(d.tags))`);
+      values.push(`%${search}%`);
+      paramCounter++;
+    }
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    query += ' ORDER BY d.created_at DESC';
+
+    const result = await pool.query(query, values);
+
+    // Não enviar file_data na listagem (apenas metadados)
+    const documents = result.rows.map(doc => ({
+      ...doc,
+      file_data: undefined, // Remove para economizar banda
+      has_file: !!doc.file_data
+    }));
+
+    res.json(documents);
+  } catch (error) {
+    console.error('Erro ao buscar documentos:', error);
+    res.status(500).json({ error: 'Erro ao buscar documentos' });
+  }
+});
+
+// Obter um documento específico (com file_data)
+app.get('/api/documents/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT d.*, dc.name as category_name, dc.color as category_color
+       FROM documents d
+       LEFT JOIN document_categories dc ON d.category_id = dc.id
+       WHERE d.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar documento:', error);
+    res.status(500).json({ error: 'Erro ao buscar documento' });
+  }
+});
+
+// Criar novo documento
+app.post('/api/documents', async (req, res) => {
+  try {
+    const {
+      category_id,
+      name,
+      description,
+      file_name,
+      file_type,
+      file_size,
+      file_data,
+      tags
+    } = req.body;
+
+    if (!name || !file_name || !file_type || !file_data) {
+      return res.status(400).json({ error: 'Campos obrigatórios: name, file_name, file_type, file_data' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO documents (category_id, name, description, file_name, file_type, file_size, file_data, tags)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        category_id || null,
+        name,
+        description || null,
+        file_name,
+        file_type,
+        file_size || null,
+        file_data,
+        tags || []
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar documento:', error);
+    res.status(500).json({ error: 'Erro ao criar documento' });
+  }
+});
+
+// Atualizar documento
+app.put('/api/documents/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      category_id,
+      name,
+      description,
+      tags
+    } = req.body;
+
+    const result = await pool.query(
+      `UPDATE documents
+       SET category_id = $1, name = $2, description = $3, tags = $4
+       WHERE id = $5
+       RETURNING *`,
+      [category_id || null, name, description, tags || [], id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar documento:', error);
+    res.status(500).json({ error: 'Erro ao atualizar documento' });
+  }
+});
+
+// Excluir documento
+app.delete('/api/documents/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM documents WHERE id = $1 RETURNING id', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Documento não encontrado' });
+    }
+
+    res.json({ message: 'Documento excluído com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir documento:', error);
+    res.status(500).json({ error: 'Erro ao excluir documento' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE DATAS IMPORTANTES
+// ================================
+
+// Listar categorias de datas importantes
+app.get('/api/important-dates-categories', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM important_dates_categories ORDER BY display_order ASC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar categorias:', error);
+    res.status(500).json({ error: 'Erro ao buscar categorias' });
+  }
+});
+
+// Listar datas importantes (com filtros opcionais)
+app.get('/api/important-dates', async (req, res) => {
+  try {
+    const { year, category_id, search } = req.query;
+
+    let query = 'SELECT * FROM important_dates_with_tags WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (year) {
+      query += ` AND year = $${paramIndex}`;
+      params.push(parseInt(year));
+      paramIndex++;
+    }
+
+    if (category_id) {
+      query += ` AND id IN (
+        SELECT important_date_id
+        FROM important_dates_tags
+        WHERE category_id = $${paramIndex}
+      )`;
+      params.push(parseInt(category_id));
+      paramIndex++;
+    }
+
+    if (search) {
+      query += ` AND (title ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`;
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    query += ' ORDER BY date DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar datas importantes:', error);
+    res.status(500).json({ error: 'Erro ao buscar datas importantes' });
+  }
+});
+
+// Buscar uma data importante específica
+app.get('/api/important-dates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM important_dates_with_tags WHERE id = $1',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Data importante não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar data importante:', error);
+    res.status(500).json({ error: 'Erro ao buscar data importante' });
+  }
+});
+
+// Criar nova data importante
+app.post('/api/important-dates', async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { date, title, description, link, tags } = req.body;
+
+    if (!date || !title) {
+      return res.status(400).json({ error: 'Campos obrigatórios: date, title' });
+    }
+
+    await client.query('BEGIN');
+
+    // Inserir data importante
+    const result = await client.query(
+      `INSERT INTO important_dates (date, title, description, link)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [date, title, description || null, link || null]
+    );
+
+    const importantDateId = result.rows[0].id;
+
+    // Inserir tags (se fornecidas)
+    if (tags && Array.isArray(tags) && tags.length > 0) {
+      for (const categoryId of tags) {
+        await client.query(
+          `INSERT INTO important_dates_tags (important_date_id, category_id)
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [importantDateId, categoryId]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Buscar resultado completo com tags
+    const finalResult = await pool.query(
+      'SELECT * FROM important_dates_with_tags WHERE id = $1',
+      [importantDateId]
+    );
+
+    res.status(201).json(finalResult.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao criar data importante:', error);
+    res.status(500).json({ error: 'Erro ao criar data importante' });
+  } finally {
+    client.release();
+  }
+});
+
+// Atualizar data importante
+app.put('/api/important-dates/:id', async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { id } = req.params;
+    const { date, title, description, link, tags } = req.body;
+
+    await client.query('BEGIN');
+
+    // Atualizar dados básicos
+    const result = await client.query(
+      `UPDATE important_dates
+       SET date = COALESCE($1, date),
+           title = COALESCE($2, title),
+           description = $3,
+           link = $4
+       WHERE id = $5
+       RETURNING *`,
+      [date, title, description, link, id]
+    );
+
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Data importante não encontrada' });
+    }
+
+    // Atualizar tags (se fornecidas)
+    if (tags !== undefined) {
+      // Remover tags antigas
+      await client.query(
+        'DELETE FROM important_dates_tags WHERE important_date_id = $1',
+        [id]
+      );
+
+      // Inserir novas tags
+      if (Array.isArray(tags) && tags.length > 0) {
+        for (const categoryId of tags) {
+          await client.query(
+            `INSERT INTO important_dates_tags (important_date_id, category_id)
+             VALUES ($1, $2)
+             ON CONFLICT DO NOTHING`,
+            [id, categoryId]
+          );
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Buscar resultado completo com tags
+    const finalResult = await pool.query(
+      'SELECT * FROM important_dates_with_tags WHERE id = $1',
+      [id]
+    );
+
+    res.json(finalResult.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao atualizar data importante:', error);
+    res.status(500).json({ error: 'Erro ao atualizar data importante' });
+  } finally {
+    client.release();
+  }
+});
+
+// Excluir data importante
+app.delete('/api/important-dates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'DELETE FROM important_dates WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Data importante não encontrada' });
+    }
+
+    res.json({ message: 'Data importante excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir data importante:', error);
+    res.status(500).json({ error: 'Erro ao excluir data importante' });
+  }
+});
+
+// Buscar anos disponíveis (para filtro)
+app.get('/api/important-dates-years', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT DISTINCT year FROM important_dates ORDER BY year DESC'
+    );
+    res.json(result.rows.map(row => row.year));
+  } catch (error) {
+    console.error('Erro ao buscar anos:', error);
+    res.status(500).json({ error: 'Erro ao buscar anos' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE ASSINATURAS
+// ================================
+
+// Listar todas as assinaturas
+app.get('/api/subscriptions', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM subscriptions ORDER BY next_charge_date ASC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar assinaturas:', error);
+    res.status(500).json({ error: 'Erro ao buscar assinaturas' });
+  }
+});
+
+// Buscar uma assinatura específica
+app.get('/api/subscriptions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM subscriptions WHERE id = $1',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Assinatura não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar assinatura:', error);
+    res.status(500).json({ error: 'Erro ao buscar assinatura' });
+  }
+});
+
+// Calcular resumo de assinaturas com separação por periodicidade
+app.get('/api/subscriptions/summary/total', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        -- Gasto mensal fixo (apenas mensais)
+        COALESCE(SUM(amount) FILTER (WHERE period = 'mensal' AND active = true), 0) as monthly_fixed,
+
+        -- Gasto médio mensal (todas convertidas)
+        COALESCE(SUM(
+          CASE
+            WHEN period = 'mensal' THEN amount
+            WHEN period = 'trimestral' THEN amount / 3
+            WHEN period = 'anual' THEN amount / 12
+          END
+        ) FILTER (WHERE active = true), 0) as monthly_average,
+
+        -- Gasto anual total
+        COALESCE(SUM(
+          CASE
+            WHEN period = 'mensal' THEN amount * 12
+            WHEN period = 'trimestral' THEN amount * 4
+            WHEN period = 'anual' THEN amount
+          END
+        ) FILTER (WHERE active = true), 0) as yearly_total,
+
+        -- Breakdown por periodicidade
+        COALESCE(SUM(amount) FILTER (WHERE period = 'mensal' AND active = true), 0) as monthly_total,
+        COALESCE(SUM(amount) FILTER (WHERE period = 'trimestral' AND active = true), 0) as trimestral_total,
+        COALESCE(SUM(amount) FILTER (WHERE period = 'anual' AND active = true), 0) as anual_total,
+
+        -- Contadores
+        COUNT(*) FILTER (WHERE period = 'mensal' AND active = true) as monthly_count,
+        COUNT(*) FILTER (WHERE period = 'trimestral' AND active = true) as trimestral_count,
+        COUNT(*) FILTER (WHERE period = 'anual' AND active = true) as anual_count,
+        COUNT(*) as total_subscriptions,
+        COUNT(*) FILTER (WHERE active = true) as active_subscriptions
+      FROM subscriptions
+    `);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao calcular total de assinaturas:', error);
+    res.status(500).json({ error: 'Erro ao calcular total de assinaturas' });
+  }
+});
+
+// Criar nova assinatura
+app.post('/api/subscriptions', async (req, res) => {
+  try {
+    const { title, contract_date, amount, period, next_charge_date, category } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO subscriptions
+       (title, contract_date, amount, period, next_charge_date, category)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [title, contract_date, amount, period, next_charge_date, category]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar assinatura:', error);
+    res.status(500).json({ error: 'Erro ao criar assinatura' });
+  }
+});
+
+// Atualizar assinatura
+app.put('/api/subscriptions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, contract_date, amount, period, next_charge_date, category, active } = req.body;
+
+    const result = await pool.query(
+      `UPDATE subscriptions
+       SET title = $1, contract_date = $2, amount = $3, period = $4,
+           next_charge_date = $5, category = $6, active = $7
+       WHERE id = $8
+       RETURNING *`,
+      [title, contract_date, amount, period, next_charge_date, category, active, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Assinatura não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar assinatura:', error);
+    res.status(500).json({ error: 'Erro ao atualizar assinatura' });
+  }
+});
+
+// Deletar assinatura
+app.delete('/api/subscriptions/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'DELETE FROM subscriptions WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Assinatura não encontrada' });
+    }
+
+    res.json({ message: 'Assinatura excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir assinatura:', error);
+    res.status(500).json({ error: 'Erro ao excluir assinatura' });
   }
 });
 

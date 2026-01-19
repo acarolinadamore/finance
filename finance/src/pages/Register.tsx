@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Eye, EyeOff, UserPlus } from 'lucide-react';
+import type { RegisterResponse } from '@/types/user';
 
 const Register = () => {
   const [name, setName] = useState('');
@@ -51,7 +52,7 @@ const Register = () => {
         body: JSON.stringify({ name, email, password }),
       });
 
-      const data = await response.json();
+      const data: RegisterResponse = await response.json();
 
       if (response.ok) {
         // Salvar token e dados do usuário

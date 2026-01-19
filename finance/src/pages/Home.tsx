@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import type { User } from "@/types/user"
 import { Button } from "@/components/ui/button"
 import {
   Wallet,
@@ -27,6 +28,8 @@ import {
   Activity,
   LogOut,
   Shield,
+  Cross,
+  LifeBuoy,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -129,23 +132,23 @@ const Home = () => {
   const { toast } = useToast()
 
   // Verificar se usuário está logado
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
-    const userData = localStorage.getItem('user')
+    const userData = localStorage.getItem("user")
     if (userData) {
       setUser(JSON.parse(userData))
     }
   }, [])
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
     toast({
-      title: 'Logout realizado',
-      description: 'Até logo!',
+      title: "Logout realizado",
+      description: "Até logo!",
     })
-    navigate('/login')
+    navigate("/login")
   }
 
   // Configuração do degradê do background (altere os valores hexadecimais)
@@ -187,11 +190,19 @@ const Home = () => {
     },
     {
       id: "metas",
-      title: "Sonhos & Metas",
+      title: "Metas & Sonhos",
       description: "Seus objetivos acompanhados de perto",
       icon: Target,
       path: "/metas",
       color: "#8b5cf6", // Violet
+    },
+    {
+      id: "rodadavida",
+      title: "Roda da Vida",
+      description: "Avalie e equilibre as áreas da sua vida",
+      icon: LifeBuoy,
+      path: "/rodadavida",
+      color: "#06b6d4", // Cyan
     },
     {
       id: "wishlist",
@@ -227,7 +238,7 @@ const Home = () => {
     },
     {
       id: "rotina",
-      title: "Rotina & Hábitos",
+      title: "Rotina",
       description: "Organize sua rotina e controle seus hábitos",
       icon: Repeat,
       path: "/rotina",
@@ -243,11 +254,19 @@ const Home = () => {
     },
     {
       id: "documentos",
-      title: "Documentos",
+      title: "Documentos Importantes",
       description: "Documentos importantes sempre à mão",
       icon: FileText,
       path: "/documentos",
       color: "#6366f1", // Indigo
+    },
+    {
+      id: "datas-importantes",
+      title: "Datas Importantes",
+      description: "Registre momentos memoráveis e acontecimentos importantes",
+      icon: CalendarIcon,
+      path: "/datas-importantes",
+      color: "#ec4899", // Pink
     },
     {
       id: "peso",
@@ -289,6 +308,14 @@ const Home = () => {
       path: "/ciclo-feminino",
       color: "#db2777", // Rose
     },
+    {
+      id: "catolico",
+      title: "Católico",
+      description: "Orações, leituras e registro de confissões",
+      icon: Cross,
+      path: "/catolico",
+      color: "#7c3aed", // Violet
+    },
   ]
 
   const [modules, setModules] = useState<Module[]>(() => {
@@ -308,18 +335,23 @@ const Home = () => {
 
   const [visibleModules, setVisibleModules] = useState<Record<string, boolean>>(
     () => {
+      // Criar objeto padrão com todos os módulos visíveis
+      const allModulesVisible = defaultModules.reduce(
+        (acc, m) => ({ ...acc, [m.id]: true }),
+        {}
+      )
+
       const savedVisibility = localStorage.getItem("home-modules-visibility")
       if (savedVisibility) {
         try {
-          return JSON.parse(savedVisibility)
+          const saved = JSON.parse(savedVisibility)
+          // Fazer merge: usar configurações salvas, mas adicionar novos módulos como visíveis
+          return { ...allModulesVisible, ...saved }
         } catch {
-          return defaultModules.reduce(
-            (acc, m) => ({ ...acc, [m.id]: true }),
-            {}
-          )
+          return allModulesVisible
         }
       }
-      return defaultModules.reduce((acc, m) => ({ ...acc, [m.id]: true }), {})
+      return allModulesVisible
     }
   )
 
@@ -359,6 +391,18 @@ const Home = () => {
     )
   }
 
+  const handleResetModules = () => {
+    const allModulesVisible = defaultModules.reduce(
+      (acc, m) => ({ ...acc, [m.id]: true }),
+      {}
+    )
+    setVisibleModules(allModulesVisible)
+    localStorage.setItem(
+      "home-modules-visibility",
+      JSON.stringify(allModulesVisible)
+    )
+  }
+
   const visibleModulesList = modules.filter((m) => visibleModules[m.id])
 
   return (
@@ -366,7 +410,7 @@ const Home = () => {
       {/* Botões no canto superior direito */}
       <div className="fixed top-4 right-4 z-[100] flex gap-2">
         {/* Botão Admin (apenas para admins) */}
-        {user && user.role === 'admin' && (
+        {user && user.role === "admin" && (
           <Link to="/admin">
             <Button
               variant="ghost"
@@ -397,6 +441,16 @@ const Home = () => {
                 Selecione quais módulos deseja visualizar na tela principal
               </DialogDescription>
             </DialogHeader>
+            <div className="pb-4 border-b">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetModules}
+                className="w-full"
+              >
+                Resetar e Mostrar Todos os Módulos
+              </Button>
+            </div>
             <div className="space-y-4 py-4 overflow-y-auto flex-1">
               {defaultModules.map((module) => {
                 const Icon = module.icon
@@ -463,7 +517,7 @@ const Home = () => {
                 className="text-6xl font-bold bg-gradient-to-r from-sky-400 to-blue-500 bg-clip-text text-transparent py-2"
                 style={{ fontFamily: "'Dancing Script', cursive" }}
               >
-                Ordena
+                Meu Dia
               </h1>
               <p className="text-muted-foreground text-base relative z-0">
                 Sua vida organizada em um só lugar.

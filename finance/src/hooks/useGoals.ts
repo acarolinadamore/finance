@@ -254,6 +254,22 @@ export const useGoals = () => {
     }
   }
 
+  const reorderGoals = async (orders: { id: number; display_order: number }[]) => {
+    try {
+      const response = await fetch(`${API_URL}/goals/reorder`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orders }),
+      })
+      if (!response.ok) throw new Error("Erro ao reordenar metas")
+      // Atualizar lista local
+      await fetchGoals()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido")
+      throw err
+    }
+  }
+
   return {
     lifeAreas,
     goals,
@@ -267,6 +283,7 @@ export const useGoals = () => {
     updateTask,
     toggleTaskCompleted,
     deleteTask,
+    reorderGoals,
     refresh: () => {
       fetchLifeAreas()
       fetchGoals()
