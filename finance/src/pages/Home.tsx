@@ -208,22 +208,6 @@ const Home = () => {
       path: "/calendario",
       color: "#3b82f6", // Blue
     },
-    {
-      id: "datas-importantes",
-      title: "Datas Importantes",
-      description: "Registre momentos memoráveis e acontecimentos importantes",
-      icon: CalendarIcon,
-      path: "/datas-importantes",
-      color: "#3b82f6", // Blue
-    },
-    {
-      id: "documentos",
-      title: "Documentos Importantes",
-      description: "Documentos importantes sempre à mão",
-      icon: FileText,
-      path: "/documentos",
-      color: "#3b82f6", // Blue
-    },
 
     // VERDE - Finanças e Compras
     {
@@ -232,7 +216,7 @@ const Home = () => {
       description: "Suas finanças organizadas e sob controle",
       icon: Wallet,
       path: "/finance",
-      color: "#059669", // Emerald (tom mais suave)
+      color: "#10b981", // Green (tom mais claro, menos florestal)
     },
     {
       id: "lista-mercado",
@@ -240,7 +224,7 @@ const Home = () => {
       description: "Suas compras planejadas e econômicas",
       icon: ShoppingCart,
       path: "/lista-mercado",
-      color: "#059669", // Emerald (tom mais suave)
+      color: "#10b981", // Green (tom mais claro, menos florestal)
     },
     {
       id: "wishlist",
@@ -248,27 +232,17 @@ const Home = () => {
       description: "Seus desejos planejados com inteligência",
       icon: Heart,
       path: "/wishlist",
-      color: "#059669", // Emerald (tom mais suave)
+      color: "#10b981", // Green (tom mais claro, menos florestal)
     },
 
-    // PRETO - Segurança
-    {
-      id: "acessos",
-      title: "Acessos",
-      description: "Gerencie seus logins, senhas e acessos",
-      icon: Key,
-      path: "/acessos",
-      color: "#1f2937", // Dark Gray/Black
-    },
-
-    // TURQUESA - Desenvolvimento Pessoal
+    // ROXO - Desenvolvimento Pessoal
     {
       id: "metas",
       title: "Metas & Sonhos",
       description: "Seus objetivos acompanhados de perto",
       icon: Target,
       path: "/metas",
-      color: "#14b8a6", // Turquoise/Teal
+      color: "#a855f7", // Purple
     },
     {
       id: "diario",
@@ -276,7 +250,7 @@ const Home = () => {
       description: "Registre seus pensamentos e sentimentos",
       icon: BookOpen,
       path: "/diario",
-      color: "#14b8a6", // Turquoise/Teal
+      color: "#a855f7", // Purple
     },
     {
       id: "rodadavida",
@@ -284,7 +258,33 @@ const Home = () => {
       description: "Avalie e equilibre as áreas da sua vida",
       icon: LifeBuoy,
       path: "/rodadavida",
-      color: "#14b8a6", // Turquoise/Teal
+      color: "#a855f7", // Purple
+    },
+
+    // PRETO - Segurança e Documentos
+    {
+      id: "documentos",
+      title: "Documentos Importantes",
+      description: "Documentos importantes sempre à mão",
+      icon: FileText,
+      path: "/documentos",
+      color: "#1f2937", // Dark Gray/Black
+    },
+    {
+      id: "datas-importantes",
+      title: "Datas Importantes",
+      description: "Registre momentos memoráveis e acontecimentos importantes",
+      icon: CalendarIcon,
+      path: "/datas-importantes",
+      color: "#1f2937", // Dark Gray/Black
+    },
+    {
+      id: "acessos",
+      title: "Acessos",
+      description: "Gerencie seus logins, senhas e acessos",
+      icon: Key,
+      path: "/acessos",
+      color: "#1f2937", // Dark Gray/Black
     },
 
     // AMARELO DOURADO - Conhecimento e Fé
