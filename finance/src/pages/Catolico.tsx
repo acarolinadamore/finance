@@ -148,28 +148,28 @@ const SortableModuleCard = ({ module }: SortableModuleCardProps) => {
   const Icon = module.icon
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <Link to={module.path}>
-        <Card className="h-full transition-all duration-500 hover:scale-[1.02] cursor-pointer group shadow-lg hover:shadow-xl rounded-xl overflow-hidden">
-          <CardHeader className="text-center py-5 pb-3">
-            <div className="flex flex-col items-center">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="h-full">
+      <Link to={module.path} className="h-full block">
+        <Card className="h-full transition-all duration-500 hover:scale-[1.02] cursor-pointer group shadow-lg hover:shadow-xl rounded-xl overflow-hidden flex flex-col">
+          <CardHeader className="text-center py-4 flex-1 flex flex-col items-center justify-center">
+            <div className="flex flex-col items-center justify-center h-full gap-1">
               <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-md mb-3"
+                className="w-14 h-14 rounded-xl flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-md mb-2"
                 style={{ backgroundColor: module.color }}
               >
                 <Icon className="h-7 w-7 text-white" />
               </div>
-              <CardTitle className="text-xl font-semibold text-gray-800 mb-1">
+              <CardTitle className="text-lg font-semibold text-gray-800 mb-0.5">
                 {module.title}
               </CardTitle>
-              <CardDescription className="text-sm text-gray-600 line-clamp-2">
+              <CardDescription className="text-sm text-gray-600 line-clamp-2 px-2 text-center">
                 {module.description}
               </CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="flex justify-center px-5 pb-5 pt-2">
+          <CardContent className="flex justify-center px-5 pb-4 pt-0 mt-auto">
             <Button
-              className="w-full h-10 text-white hover:opacity-90 transition-all duration-300 rounded-lg text-sm shadow-sm hover:shadow-md"
+              className="w-full h-10 text-white hover:opacity-90 transition-all duration-300 rounded-lg text-sm font-medium shadow-sm hover:shadow-md"
               style={{
                 background: `linear-gradient(135deg, ${module.color}, ${module.color}dd)`,
               }}
@@ -252,7 +252,7 @@ const Catolico = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="container mx-auto px-4 pt-8 pb-12 max-w-7xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
@@ -311,7 +311,7 @@ const Catolico = () => {
             items={modules.map((m) => m.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr items-stretch">
               {modules
                 .filter((m) => visibleModules[m.id])
                 .map((module) => (

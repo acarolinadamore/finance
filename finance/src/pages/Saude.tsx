@@ -27,7 +27,7 @@ const Saude = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 pt-8 pb-12">
         <div className="flex items-center gap-4 mb-8">
           <Link to="/">
             <Button variant="ghost" size="icon">
@@ -45,35 +45,35 @@ const Saude = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr items-stretch">
           {sections.map((section) => {
             const Icon = section.icon
 
             if (section.disabled) {
               return (
-                <div key={section.id} className="opacity-60 cursor-not-allowed">
-                  <Card className="h-full transition-all duration-500 rounded-xl overflow-hidden shadow-lg">
-                    <CardHeader className="text-center py-5 pb-3">
-                      <div className="flex flex-col items-center">
+                <div key={section.id} className="opacity-60 cursor-not-allowed h-full">
+                  <Card className="h-full transition-all duration-500 rounded-xl overflow-hidden shadow-lg flex flex-col">
+                    <CardHeader className="text-center py-4 flex-1 flex flex-col items-center justify-center">
+                      <div className="flex flex-col items-center justify-center h-full gap-1">
                         <div
-                          className="w-14 h-14 rounded-xl flex items-center justify-center shadow-md mb-3 relative"
+                          className="w-14 h-14 rounded-xl flex items-center justify-center shadow-md mb-2 relative"
                           style={{ backgroundColor: section.color }}
                         >
                           <Icon className="h-7 w-7 text-white" />
                           <Construction className="h-4 w-4 text-orange-500 absolute -top-1 -right-1 bg-white rounded-full p-0.5" />
                         </div>
-                        <CardTitle className="text-xl font-semibold text-gray-800 mb-1">
+                        <CardTitle className="text-lg font-semibold text-gray-800 mb-0.5">
                           {section.title}
                         </CardTitle>
-                        <CardDescription className="text-sm text-gray-600 line-clamp-2">
+                        <CardDescription className="text-sm text-gray-600 line-clamp-2 px-2 text-center">
                           {section.description}
                         </CardDescription>
                       </div>
                     </CardHeader>
-                    <CardContent className="flex justify-center px-5 pb-5 pt-2">
+                    <CardContent className="flex justify-center px-5 pb-4 pt-0 mt-auto">
                       <Button
                         disabled
-                        className="w-full h-10 text-white rounded-lg text-sm shadow-sm"
+                        className="w-full h-10 text-white rounded-lg text-sm font-medium shadow-sm"
                         style={{
                           background: `linear-gradient(135deg, ${section.color}, ${section.color}dd)`,
                         }}
@@ -87,27 +87,27 @@ const Saude = () => {
             }
 
             return (
-              <Link key={section.id} to={section.path}>
-                <Card className="h-full transition-all duration-500 hover:scale-[1.02] cursor-pointer group shadow-lg hover:shadow-xl rounded-xl overflow-hidden">
-                  <CardHeader className="text-center py-5 pb-3">
-                    <div className="flex flex-col items-center">
+              <Link key={section.id} to={section.path} className="h-full block">
+                <Card className="h-full transition-all duration-500 hover:scale-[1.02] cursor-pointer group shadow-lg hover:shadow-xl rounded-xl overflow-hidden flex flex-col">
+                  <CardHeader className="text-center py-4 flex-1 flex flex-col items-center justify-center">
+                    <div className="flex flex-col items-center justify-center h-full gap-1">
                       <div
-                        className="w-14 h-14 rounded-xl flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-md mb-3"
+                        className="w-14 h-14 rounded-xl flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-md mb-2"
                         style={{ backgroundColor: section.color }}
                       >
                         <Icon className="h-7 w-7 text-white" />
                       </div>
-                      <CardTitle className="text-xl font-semibold text-gray-800 mb-1">
+                      <CardTitle className="text-lg font-semibold text-gray-800 mb-0.5">
                         {section.title}
                       </CardTitle>
-                      <CardDescription className="text-sm text-gray-600 line-clamp-2">
+                      <CardDescription className="text-sm text-gray-600 line-clamp-2 px-2 text-center">
                         {section.description}
                       </CardDescription>
                     </div>
                   </CardHeader>
-                  <CardContent className="flex justify-center px-5 pb-5 pt-2">
+                  <CardContent className="flex justify-center px-5 pb-4 pt-0 mt-auto">
                     <Button
-                      className="w-full h-10 text-white hover:opacity-90 transition-all duration-300 rounded-lg text-sm shadow-sm hover:shadow-md"
+                      className="w-full h-10 text-white hover:opacity-90 transition-all duration-300 rounded-lg text-sm font-medium shadow-sm hover:shadow-md"
                       style={{
                         background: `linear-gradient(135deg, ${section.color}, ${section.color}dd)`,
                       }}

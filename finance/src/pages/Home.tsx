@@ -95,28 +95,28 @@ const SortableModuleCard = ({ module }: SortableModuleCardProps) => {
   const Icon = module.icon
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <Link to={module.path}>
-        <Card className="h-full transition-all duration-500 hover:scale-[1.02] cursor-pointer group shadow-lg hover:shadow-xl rounded-xl overflow-hidden">
-          <CardHeader className="text-center py-5 pb-3">
-            <div className="flex flex-col items-center">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="h-full">
+      <Link to={module.path} className="h-full block">
+        <Card className="h-full transition-all duration-500 hover:scale-[1.02] cursor-pointer group shadow-lg hover:shadow-xl rounded-xl overflow-hidden flex flex-col">
+          <CardHeader className="text-center py-4 flex-1 flex flex-col items-center justify-center">
+            <div className="flex flex-col items-center justify-center h-full gap-1">
               <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-md mb-3"
+                className="w-14 h-14 rounded-xl flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-md mb-2"
                 style={{ backgroundColor: module.color }}
               >
                 <Icon className="h-7 w-7 text-white" />
               </div>
-              <CardTitle className="text-xl font-semibold text-gray-800 mb-1">
+              <CardTitle className="text-lg font-semibold text-gray-800 mb-0.5">
                 {module.title}
               </CardTitle>
-              <CardDescription className="text-sm text-gray-600 line-clamp-2">
+              <CardDescription className="text-sm text-gray-600 line-clamp-2 px-2 text-center">
                 {module.description}
               </CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="flex justify-center px-5 pb-5 pt-2">
+          <CardContent className="flex justify-center px-5 pb-4 pt-0 mt-auto">
             <Button
-              className="w-full h-10 text-white hover:opacity-90 transition-all duration-300 rounded-lg text-sm shadow-sm hover:shadow-md"
+              className="w-full h-10 text-white hover:opacity-90 transition-all duration-300 rounded-lg text-sm font-medium shadow-sm hover:shadow-md"
               style={{
                 background: `linear-gradient(135deg, ${module.color}, ${module.color}dd)`,
               }}
@@ -183,53 +183,14 @@ const Home = () => {
   const backgroundImage = backgroundImages[currentImageIndex]
 
   const defaultModules: Module[] = [
+    // AZUL - Organização e Planejamento
     {
-      id: "finance",
-      title: "Financeiro",
-      description: "Suas finanças organizadas e sob controle",
-      icon: Wallet,
-      path: "/finance",
-      color: "#0ea5e9", // Sky
-    },
-    {
-      id: "metas",
-      title: "Metas & Sonhos",
-      description: "Seus objetivos acompanhados de perto",
-      icon: Target,
-      path: "/metas",
-      color: "#8b5cf6", // Violet
-    },
-    {
-      id: "rodadavida",
-      title: "Roda da Vida",
-      description: "Avalie e equilibre as áreas da sua vida",
-      icon: LifeBuoy,
-      path: "/rodadavida",
-      color: "#06b6d4", // Cyan
-    },
-    {
-      id: "wishlist",
-      title: "Wishlist",
-      description: "Seus desejos planejados com inteligência",
-      icon: Heart,
-      path: "/wishlist",
-      color: "#ec4899", // Pink
-    },
-    {
-      id: "lista-mercado",
-      title: "Lista Mercado",
-      description: "Suas compras planejadas e econômicas",
-      icon: ShoppingCart,
-      path: "/lista-mercado",
-      color: "#14b8a6", // Teal
-    },
-    {
-      id: "acessos",
-      title: "Acessos",
-      description: "Gerencie seus logins, senhas e acessos",
-      icon: Key,
-      path: "/acessos",
-      color: "#8b5cf6", // Purple
+      id: "rotina",
+      title: "Rotina",
+      description: "Organize sua rotina e controle seus hábitos",
+      icon: Repeat,
+      path: "/rotina",
+      color: "#3b82f6", // Blue
     },
     {
       id: "todo-list",
@@ -237,23 +198,7 @@ const Home = () => {
       description: "Organize suas tarefas e atividades diárias",
       icon: ListTodo,
       path: "/todo-list",
-      color: "#f97316", // Orange
-    },
-    {
-      id: "refeicoes",
-      title: "Refeições",
-      description: "Acompanhe o que você come e como se sente",
-      icon: UtensilsCrossed,
-      path: "/meals",
-      color: "#ef4444", // Red
-    },
-    {
-      id: "rotina",
-      title: "Rotina",
-      description: "Organize sua rotina e controle seus hábitos",
-      icon: Repeat,
-      path: "/rotina",
-      color: "#10b981", // Emerald
+      color: "#3b82f6", // Blue
     },
     {
       id: "calendario",
@@ -264,28 +209,66 @@ const Home = () => {
       color: "#3b82f6", // Blue
     },
     {
-      id: "documentos",
-      title: "Documentos Importantes",
-      description: "Documentos importantes sempre à mão",
-      icon: FileText,
-      path: "/documentos",
-      color: "#6366f1", // Indigo
-    },
-    {
       id: "datas-importantes",
       title: "Datas Importantes",
       description: "Registre momentos memoráveis e acontecimentos importantes",
       icon: CalendarIcon,
       path: "/datas-importantes",
-      color: "#ec4899", // Pink
+      color: "#3b82f6", // Blue
     },
     {
-      id: "peso",
-      title: "Registro de Peso",
-      description: "Acompanhe sua evolução de peso e saúde",
-      icon: TrendingDown,
-      path: "/peso",
-      color: "#84cc16", // Lime
+      id: "documentos",
+      title: "Documentos Importantes",
+      description: "Documentos importantes sempre à mão",
+      icon: FileText,
+      path: "/documentos",
+      color: "#3b82f6", // Blue
+    },
+
+    // VERDE - Finanças e Compras
+    {
+      id: "finance",
+      title: "Financeiro",
+      description: "Suas finanças organizadas e sob controle",
+      icon: Wallet,
+      path: "/finance",
+      color: "#059669", // Emerald (tom mais suave)
+    },
+    {
+      id: "lista-mercado",
+      title: "Lista Mercado",
+      description: "Suas compras planejadas e econômicas",
+      icon: ShoppingCart,
+      path: "/lista-mercado",
+      color: "#059669", // Emerald (tom mais suave)
+    },
+    {
+      id: "wishlist",
+      title: "Wishlist",
+      description: "Seus desejos planejados com inteligência",
+      icon: Heart,
+      path: "/wishlist",
+      color: "#059669", // Emerald (tom mais suave)
+    },
+
+    // PRETO - Segurança
+    {
+      id: "acessos",
+      title: "Acessos",
+      description: "Gerencie seus logins, senhas e acessos",
+      icon: Key,
+      path: "/acessos",
+      color: "#1f2937", // Dark Gray/Black
+    },
+
+    // TURQUESA - Desenvolvimento Pessoal
+    {
+      id: "metas",
+      title: "Metas & Sonhos",
+      description: "Seus objetivos acompanhados de perto",
+      icon: Target,
+      path: "/metas",
+      color: "#14b8a6", // Turquoise/Teal
     },
     {
       id: "diario",
@@ -293,7 +276,25 @@ const Home = () => {
       description: "Registre seus pensamentos e sentimentos",
       icon: BookOpen,
       path: "/diario",
-      color: "#a855f7", // Purple
+      color: "#14b8a6", // Turquoise/Teal
+    },
+    {
+      id: "rodadavida",
+      title: "Roda da Vida",
+      description: "Avalie e equilibre as áreas da sua vida",
+      icon: LifeBuoy,
+      path: "/rodadavida",
+      color: "#14b8a6", // Turquoise/Teal
+    },
+
+    // AMARELO DOURADO - Conhecimento e Fé
+    {
+      id: "catolico",
+      title: "Católico",
+      description: "Orações, leituras e registro de confissões",
+      icon: Cross,
+      path: "/catolico",
+      color: "#fbbf24", // Yellow Gold
     },
     {
       id: "leituras",
@@ -301,7 +302,7 @@ const Home = () => {
       description: "Acompanhe seus livros e progresso de leitura",
       icon: BookMarked,
       path: "/leituras",
-      color: "#f59e0b", // Amber
+      color: "#fbbf24", // Yellow Gold
     },
     {
       id: "estudos",
@@ -309,16 +310,10 @@ const Home = () => {
       description: "Organize seus cursos e materiais de estudo",
       icon: GraduationCap,
       path: "/estudos",
-      color: "#06b6d4", // Cyan
+      color: "#fbbf24", // Yellow Gold
     },
-    {
-      id: "ciclo-feminino",
-      title: "Ciclo Feminino",
-      description: "Acompanhe seu ciclo menstrual e bem-estar",
-      icon: Activity,
-      path: "/ciclo-feminino",
-      color: "#db2777", // Rose
-    },
+
+    // ROSA - Beleza e Bem-estar Feminino
     {
       id: "skincare",
       title: "Skincare",
@@ -328,20 +323,38 @@ const Home = () => {
       color: "#ec4899", // Pink
     },
     {
+      id: "ciclo-feminino",
+      title: "Ciclo Feminino",
+      description: "Acompanhe seu ciclo menstrual e bem-estar",
+      icon: Activity,
+      path: "/ciclo-feminino",
+      color: "#ec4899", // Pink
+    },
+
+    // VERMELHO - Saúde e Nutrição
+    {
       id: "saude",
       title: "Saúde",
       description: "Consultas e receitas médicas",
       icon: Stethoscope,
       path: "/saude",
-      color: "#10b981", // Green
+      color: "#ef4444", // Red
     },
     {
-      id: "catolico",
-      title: "Católico",
-      description: "Orações, leituras e registro de confissões",
-      icon: Cross,
-      path: "/catolico",
-      color: "#7c3aed", // Violet
+      id: "peso",
+      title: "Registro de Peso",
+      description: "Acompanhe sua evolução de peso e saúde",
+      icon: TrendingDown,
+      path: "/peso",
+      color: "#ef4444", // Red
+    },
+    {
+      id: "refeicoes",
+      title: "Refeições",
+      description: "Acompanhe o que você come e como se sente",
+      icon: UtensilsCrossed,
+      path: "/meals",
+      color: "#ef4444", // Red
     },
   ]
 
@@ -544,7 +557,7 @@ const Home = () => {
         )}
       </div>
 
-      <main className="container mx-auto px-4">
+      <main className="container mx-auto px-4 pb-12">
         <header className="mb-4 max-w-7xl mx-auto">
           <div className="px-6 py-6">
             <div className="text-center">
@@ -570,7 +583,7 @@ const Home = () => {
             items={visibleModulesList.map((m) => m.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto auto-rows-fr items-stretch">
               {visibleModulesList.map((module) => (
                 <SortableModuleCard key={module.id} module={module} />
               ))}
