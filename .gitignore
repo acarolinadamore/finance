@@ -40,6 +40,18 @@ yarn-error.log*
 *.db
 *.sqlite
 
+# Uploads e arquivos de usuário (podem conter dados sensíveis)
+uploads/
+uploads/**/*
+
+# Scripts SQL soltos na raiz (podem conter dados de teste/cliente)
+/*.sql
+sql_*.sql
+add-*.sql
+
+# Scripts de migration executáveis (podem conter conexões ou dados)
+server/run-*-migration.js
+
 # Scripts temporários de fix/debug
 fix_*.sql
 fix_*.js

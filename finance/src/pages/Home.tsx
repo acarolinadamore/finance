@@ -14,6 +14,7 @@ import {
   Target,
   Heart,
   ShoppingCart,
+  Key,
   Settings,
   UtensilsCrossed,
   Calendar as CalendarIcon,
@@ -30,6 +31,8 @@ import {
   Shield,
   Cross,
   LifeBuoy,
+  Sparkles,
+  Stethoscope,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -221,6 +224,14 @@ const Home = () => {
       color: "#14b8a6", // Teal
     },
     {
+      id: "acessos",
+      title: "Acessos",
+      description: "Gerencie seus logins, senhas e acessos",
+      icon: Key,
+      path: "/acessos",
+      color: "#8b5cf6", // Purple
+    },
+    {
       id: "todo-list",
       title: "Lista de Tarefas",
       description: "Organize suas tarefas e atividades diárias",
@@ -309,6 +320,22 @@ const Home = () => {
       color: "#db2777", // Rose
     },
     {
+      id: "skincare",
+      title: "Skincare",
+      description: "Sua rotina de cuidados com a pele",
+      icon: Sparkles,
+      path: "/skincare",
+      color: "#ec4899", // Pink
+    },
+    {
+      id: "saude",
+      title: "Saúde",
+      description: "Consultas e receitas médicas",
+      icon: Stethoscope,
+      path: "/saude",
+      color: "#10b981", // Green
+    },
+    {
       id: "catolico",
       title: "Católico",
       description: "Orações, leituras e registro de confissões",
@@ -323,9 +350,17 @@ const Home = () => {
     if (savedOrder) {
       try {
         const orderIds = JSON.parse(savedOrder)
-        return orderIds
+        const savedModules = orderIds
           .map((id: string) => defaultModules.find((m) => m.id === id))
           .filter(Boolean)
+
+        // Adicionar novos módulos que não estão no localStorage
+        const savedModuleIds = savedModules.map((m) => m.id)
+        const newModules = defaultModules.filter(
+          (m) => !savedModuleIds.includes(m.id)
+        )
+
+        return [...savedModules, ...newModules]
       } catch {
         return defaultModules
       }
@@ -517,7 +552,7 @@ const Home = () => {
                 className="text-6xl font-bold bg-gradient-to-r from-sky-400 to-blue-500 bg-clip-text text-transparent py-2"
                 style={{ fontFamily: "'Dancing Script', cursive" }}
               >
-                Meu Dia
+                Ordena
               </h1>
               <p className="text-muted-foreground text-base relative z-0">
                 Sua vida organizada em um só lugar.

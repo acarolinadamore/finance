@@ -7,6 +7,7 @@ import Home from "./pages/Home";
 import Index from "./pages/Index";
 import Wishlist from "./pages/Wishlist";
 import ShoppingList from "./pages/ShoppingList";
+import AccessList from "./pages/AccessList";
 import TodoList from "./pages/TodoList";
 import Goals from "./pages/Goals";
 import RodaDaVida from "./pages/RodaDaVida";
@@ -29,6 +30,10 @@ import CatolicoConfissoes from "./pages/CatolicoConfissoes";
 import CatolicoLectioDivina from "./pages/CatolicoLectioDivina";
 import CatolicoTerco from "./pages/CatolicoTerco";
 import CatolicoCoral from "./pages/CatolicoCoral";
+import Skincare from "./pages/Skincare";
+import Saude from "./pages/Saude";
+import SaudeConsultas from "./pages/SaudeConsultas";
+import SaudeReceitas from "./pages/SaudeReceitas";
 import NotFound from "./pages/NotFound";
 import MigrationTool from "./pages/MigrationTool";
 import CicloFeminino from "./pages/CicloFeminino";
@@ -62,6 +67,7 @@ const App = () => (
           <Route path="/finance" element={<Index />} />
           <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/lista-mercado" element={<ShoppingList />} />
+          <Route path="/acessos" element={<AccessList />} />
           <Route path="/todo-list" element={<TodoList />} />
           <Route path="/metas" element={<Goals />} />
           <Route path="/rodadavida" element={<RodaDaVida />} />
@@ -85,6 +91,10 @@ const App = () => (
           <Route path="/catolico/terco" element={<CatolicoTerco />} />
           <Route path="/catolico/coral" element={<CatolicoCoral />} />
           <Route path="/ciclo-feminino" element={<CicloFeminino />} />
+          <Route path="/skincare" element={<Skincare />} />
+          <Route path="/saude" element={<Saude />} />
+          <Route path="/saude/consultas" element={<SaudeConsultas />} />
+          <Route path="/saude/receitas" element={<SaudeReceitas />} />
           <Route path="/migration" element={<MigrationTool />} />
           <Route path="/api-test" element={<TransactionsExample />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

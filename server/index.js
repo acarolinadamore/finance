@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { Pool } = require('pg');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 dotenv.config();
 
@@ -26,6 +29,39 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Servir arquivos estáticos da pasta uploads
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Configuração do Multer para upload de fotos
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '../uploads/skincare');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'skincare-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: function (req, file, cb) {
+    const filetypes = /jpeg|jpg|png|gif/;
+    const mimetype = filetypes.test(file.mimetype);
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    }
+    cb(new Error('Apenas imagens são permitidas (jpeg, jpg, png, gif)'));
+  }
+});
 
 // Configuração do PostgreSQL
 const pool = new Pool({
@@ -780,6 +816,208 @@ app.delete('/api/shopping-list-items/:id', async (req, res) => {
 
   try {
     const result = await pool.query('DELETE FROM shopping_list_items WHERE id = $1 RETURNING *', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+
+    res.json({ message: 'Item excluído com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir item:', error);
+    res.status(500).json({ error: 'Erro ao excluir item' });
+  }
+});
+
+// ========================================
+// ROTAS DA LISTA DE ACESSOS
+// ========================================
+
+// Obter todas as listas de acessos com seus itens
+app.get('/api/access-lists', authenticateToken, async (req, res) => {
+  try {
+    const lists = await pool.query('SELECT * FROM access_lists ORDER BY display_order ASC NULLS LAST, created_at DESC');
+
+    const listsWithItems = await Promise.all(
+      lists.rows.map(async (list) => {
+        const items = await pool.query(
+          'SELECT * FROM access_list_items WHERE list_id = $1 ORDER BY created_at ASC',
+          [list.id]
+        );
+        return {
+          ...list,
+          items: items.rows
+        };
+      })
+    );
+
+    res.json(listsWithItems);
+  } catch (error) {
+    console.error('Erro ao buscar listas de acessos:', error);
+    res.status(500).json({ error: 'Erro ao buscar listas de acessos' });
+  }
+});
+
+// Criar nova lista de acessos
+app.post('/api/access-lists', authenticateToken, async (req, res) => {
+  const { name } = req.body;
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO access_lists (name) VALUES ($1) RETURNING *',
+      [name]
+    );
+    res.status(201).json({ ...result.rows[0], items: [] });
+  } catch (error) {
+    console.error('Erro ao criar lista de acessos:', error);
+    res.status(500).json({ error: 'Erro ao criar lista de acessos' });
+  }
+});
+
+// Reordenar listas de acessos (PRECISA VIR ANTES DE /:id)
+app.put('/api/access-lists/reorder', authenticateToken, async (req, res) => {
+  const { orders } = req.body; // Array de { id, display_order }
+
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const item of orders) {
+        await client.query(
+          'UPDATE access_lists SET display_order = $1 WHERE id = $2',
+          [item.display_order, item.id]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json({ message: 'Ordem atualizada com sucesso' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Erro ao atualizar ordem:', error);
+    res.status(500).json({ error: 'Erro ao atualizar ordem' });
+  }
+});
+
+// Atualizar nome da lista de acessos
+app.put('/api/access-lists/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+
+  try {
+    const result = await pool.query(
+      'UPDATE access_lists SET name = $1 WHERE id = $2 RETURNING *',
+      [name, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Lista não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar lista:', error);
+    res.status(500).json({ error: 'Erro ao atualizar lista' });
+  }
+});
+
+// Excluir lista de acessos
+app.delete('/api/access-lists/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM access_lists WHERE id = $1 RETURNING *', [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Lista não encontrada' });
+    }
+
+    res.json({ message: 'Lista excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir lista:', error);
+    res.status(500).json({ error: 'Erro ao excluir lista' });
+  }
+});
+
+// Adicionar item à lista de acessos
+app.post('/api/access-lists/:listId/items', authenticateToken, async (req, res) => {
+  const { listId } = req.params;
+  const { title, url, username, password } = req.body;
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO access_list_items (list_id, title, url, username, password) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [listId, title, url || null, username || null, password || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao adicionar item:', error);
+    res.status(500).json({ error: 'Erro ao adicionar item' });
+  }
+});
+
+// Atualizar item
+app.put('/api/access-list-items/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { title, url, username, password } = req.body;
+
+  try {
+    let query = 'UPDATE access_list_items SET ';
+    const values = [];
+    let paramCount = 1;
+
+    if (title !== undefined) {
+      query += `title = $${paramCount}, `;
+      values.push(title);
+      paramCount++;
+    }
+    if (url !== undefined) {
+      query += `url = $${paramCount}, `;
+      values.push(url);
+      paramCount++;
+    }
+    if (username !== undefined) {
+      query += `username = $${paramCount}, `;
+      values.push(username);
+      paramCount++;
+    }
+    if (password !== undefined) {
+      query += `password = $${paramCount}, `;
+      values.push(password);
+      paramCount++;
+    }
+
+    if (paramCount === 1) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+
+    query = query.slice(0, -2);
+    query += ` WHERE id = $${paramCount} RETURNING *`;
+    values.push(id);
+
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar item:', error);
+    res.status(500).json({ error: 'Erro ao atualizar item' });
+  }
+});
+
+// Excluir item
+app.delete('/api/access-list-items/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query('DELETE FROM access_list_items WHERE id = $1 RETURNING *', [id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item não encontrado' });
@@ -1903,16 +2141,1066 @@ app.delete('/api/habit-completions/:id', async (req, res) => {
 });
 
 // ================================
+// ENDPOINTS DE SKINCARE
+// ================================
+
+// Listar produtos de skincare
+app.get('/api/skincare', authenticateToken, async (req, res) => {
+  try {
+    const user_id = req.user.userId;
+    const { day_of_week, period } = req.query;
+
+    let query = 'SELECT * FROM skincare_routines WHERE user_id = $1';
+    const params = [user_id];
+
+    if (day_of_week) {
+      query += ' AND day_of_week = $2';
+      params.push(day_of_week);
+    }
+
+    if (period) {
+      const paramIndex = params.length + 1;
+      query += ` AND period = $${paramIndex}`;
+      params.push(period);
+    }
+
+    query += ' ORDER BY day_of_week, period, application_order';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar skincare:', error);
+    res.status(500).json({ error: 'Erro ao buscar rotina de skincare' });
+  }
+});
+
+// Criar produto de skincare
+app.post('/api/skincare', authenticateToken, async (req, res) => {
+  try {
+    const user_id = req.user.userId;
+    const { day_of_week, period, product_name, application_order, notes } = req.body;
+
+    if (!day_of_week || !period || !product_name) {
+      return res.status(400).json({ error: 'Dia da semana, período e nome do produto são obrigatórios' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO skincare_routines (user_id, day_of_week, period, product_name, application_order, notes)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [user_id, day_of_week, period, product_name, application_order || 0, notes]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar produto de skincare:', error);
+    res.status(500).json({ error: 'Erro ao criar produto de skincare' });
+  }
+});
+
+// Reordenar produtos de skincare
+app.put('/api/skincare/reorder', authenticateToken, async (req, res) => {
+  try {
+    const user_id = req.user.userId;
+    const { orders } = req.body; // Array de { id, application_order }
+
+    if (!Array.isArray(orders)) {
+      return res.status(400).json({ error: 'orders deve ser um array' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const item of orders) {
+        await client.query(
+          'UPDATE skincare_routines SET application_order = $1 WHERE id = $2 AND user_id = $3',
+          [item.application_order, item.id, user_id]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json({ message: 'Ordem atualizada com sucesso' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Erro ao reordenar produtos:', error);
+    res.status(500).json({ error: 'Erro ao reordenar produtos' });
+  }
+});
+
+// Atualizar produto de skincare
+app.put('/api/skincare/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+    const { day_of_week, period, product_name, application_order, notes } = req.body;
+
+    const result = await pool.query(
+      `UPDATE skincare_routines
+       SET day_of_week = $1, period = $2, product_name = $3, application_order = $4, notes = $5, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $6 AND user_id = $7 RETURNING *`,
+      [day_of_week, period, product_name, application_order, notes, id, user_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar produto:', error);
+    res.status(500).json({ error: 'Erro ao atualizar produto' });
+  }
+});
+
+// Deletar produto de skincare
+app.delete('/api/skincare/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+
+    const result = await pool.query(
+      'DELETE FROM skincare_routines WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, user_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
+
+    res.json({ message: 'Produto deletado com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar produto:', error);
+    res.status(500).json({ error: 'Erro ao deletar produto' });
+  }
+});
+
+// ===== TREATMENT =====
+
+// Upload de foto para tratamento
+app.post('/api/skincare/treatment/upload', authenticateToken, upload.single('photo'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+
+    const photoUrl = `/uploads/skincare/${req.file.filename}`;
+    res.json({
+      message: 'Upload realizado com sucesso',
+      photo_url: photoUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error('Erro no upload:', error);
+    res.status(500).json({ error: 'Erro ao fazer upload da foto' });
+  }
+});
+
+// Buscar tratamento ativo
+app.get('/api/skincare/treatment', authenticateToken, async (req, res) => {
+  try {
+    const user_id = req.user.userId;
+
+    const result = await pool.query(
+      'SELECT * FROM skincare_treatments WHERE user_id = $1 AND is_active = true',
+      [user_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json(null);
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar tratamento:', error);
+    res.status(500).json({ error: 'Erro ao buscar tratamento' });
+  }
+});
+
+// Criar ou atualizar tratamento
+app.post('/api/skincare/treatment', authenticateToken, async (req, res) => {
+  try {
+    const user_id = req.user.userId;
+    let { treatment_description, goal, start_date, end_date, photo_url, photo_date } = req.body;
+
+    // Converter strings vazias em NULL para campos de data e texto
+    start_date = start_date && start_date.trim() !== '' ? start_date : null;
+    end_date = end_date && end_date.trim() !== '' ? end_date : null;
+    photo_date = photo_date && photo_date.trim() !== '' ? photo_date : null;
+    photo_url = photo_url && photo_url.trim() !== '' ? photo_url : null;
+    treatment_description = treatment_description && treatment_description.trim() !== '' ? treatment_description : null;
+    goal = goal && goal.trim() !== '' ? goal : null;
+
+    // Verificar se já existe um tratamento ativo
+    const existing = await pool.query(
+      'SELECT * FROM skincare_treatments WHERE user_id = $1 AND is_active = true',
+      [user_id]
+    );
+
+    let result;
+    if (existing.rows.length > 0) {
+      // Atualizar tratamento existente
+      result = await pool.query(
+        `UPDATE skincare_treatments
+         SET treatment_description = $1, goal = $2, start_date = $3, end_date = $4,
+             photo_url = $5, photo_date = $6, updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $7 AND is_active = true
+         RETURNING *`,
+        [treatment_description, goal, start_date, end_date, photo_url, photo_date, user_id]
+      );
+    } else {
+      // Criar novo tratamento
+      result = await pool.query(
+        `INSERT INTO skincare_treatments
+         (user_id, treatment_description, goal, start_date, end_date, photo_url, photo_date, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+         RETURNING *`,
+        [user_id, treatment_description, goal, start_date, end_date, photo_url, photo_date]
+      );
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao salvar tratamento:', error);
+    res.status(500).json({ error: 'Erro ao salvar tratamento' });
+  }
+});
+
+// Deletar tratamento
+app.delete('/api/skincare/treatment/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+
+    const result = await pool.query(
+      'DELETE FROM skincare_treatments WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, user_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tratamento não encontrado' });
+    }
+
+    res.json({ message: 'Tratamento deletado com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar tratamento:', error);
+    res.status(500).json({ error: 'Erro ao deletar tratamento' });
+  }
+});
+
+// ===== COMPLETIONS =====
+
+// Buscar completions de produtos de skincare
+app.get('/api/skincare/completions', authenticateToken, async (req, res) => {
+  try {
+    const user_id = req.user.userId;
+    const { date } = req.query;
+
+    let query = 'SELECT * FROM skincare_completions WHERE user_id = $1';
+    const params = [user_id];
+
+    if (date) {
+      query += ' AND completion_date = $2';
+      params.push(date);
+    }
+
+    query += ' ORDER BY completion_date DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar completions:', error);
+    res.status(500).json({ error: 'Erro ao buscar completions' });
+  }
+});
+
+// Toggle completion de produto de skincare
+app.post('/api/skincare/:id/toggle', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+    const { date, completed } = req.body;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Data é obrigatória' });
+    }
+
+    // Verificar se o produto pertence ao usuário
+    const productCheck = await pool.query(
+      'SELECT * FROM skincare_routines WHERE id = $1 AND user_id = $2',
+      [id, user_id]
+    );
+
+    if (productCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
+
+    // Upsert do completion
+    const result = await pool.query(
+      `INSERT INTO skincare_completions (user_id, product_id, completion_date, completed)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, product_id, completion_date)
+       DO UPDATE SET completed = EXCLUDED.completed, updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [user_id, id, date, completed]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao toggle completion:', error);
+    res.status(500).json({ error: 'Erro ao atualizar completion' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE RECEITAS (PRESCRIPTIONS)
+// ================================
+
+// Listar receitas do usuário com seus itens e fotos
+app.get('/api/prescriptions', authenticateToken, async (req, res) => {
+  try {
+    const user_id = req.user.userId;
+
+    const prescriptions = await pool.query(
+      'SELECT * FROM prescriptions WHERE user_id = $1 ORDER BY prescription_date DESC, created_at DESC',
+      [user_id]
+    );
+
+    // Para cada receita, buscar seus itens e fotos
+    const prescriptionsWithItemsAndPhotos = await Promise.all(
+      prescriptions.rows.map(async (prescription) => {
+        const items = await pool.query(
+          'SELECT * FROM prescription_items WHERE prescription_id = $1 ORDER BY id',
+          [prescription.id]
+        );
+        const photos = await pool.query(
+          'SELECT * FROM prescription_photos WHERE prescription_id = $1 ORDER BY created_at',
+          [prescription.id]
+        );
+        return {
+          ...prescription,
+          items: items.rows,
+          photos: photos.rows
+        };
+      })
+    );
+
+    res.json(prescriptionsWithItemsAndPhotos);
+  } catch (error) {
+    console.error('Erro ao buscar receitas:', error);
+    res.status(500).json({ error: 'Erro ao buscar receitas' });
+  }
+});
+
+// Criar nova receita com itens
+app.post('/api/prescriptions', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const user_id = req.user.userId;
+    let { prescription_date, doctor_name, doctor_crm, doctor_specialty, notes, rating, items, photo_urls } = req.body;
+
+    // Converter strings vazias em NULL
+    prescription_date = prescription_date && prescription_date.trim() !== '' ? prescription_date : null;
+    doctor_name = doctor_name && doctor_name.trim() !== '' ? doctor_name : null;
+    doctor_crm = doctor_crm && doctor_crm.trim() !== '' ? doctor_crm : null;
+    doctor_specialty = doctor_specialty && doctor_specialty.trim() !== '' ? doctor_specialty : null;
+    notes = notes && notes.trim() !== '' ? notes : null;
+    rating = rating !== undefined && rating !== null && rating !== '' ? parseInt(rating) : null;
+
+    if (!prescription_date) {
+      return res.status(400).json({ error: 'Data da receita é obrigatória' });
+    }
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: 'Adicione pelo menos um remédio' });
+    }
+
+    if (rating !== null && (rating < 0 || rating > 10)) {
+      return res.status(400).json({ error: 'Rating deve ser entre 0 e 10' });
+    }
+
+    await client.query('BEGIN');
+
+    // Inserir receita
+    const prescriptionResult = await client.query(
+      `INSERT INTO prescriptions (user_id, prescription_date, doctor_name, doctor_crm, doctor_specialty, notes, rating)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [user_id, prescription_date, doctor_name, doctor_crm, doctor_specialty, notes, rating]
+    );
+
+    const prescription = prescriptionResult.rows[0];
+
+    // Inserir itens
+    const itemsInserted = [];
+    for (const item of items) {
+      let medicine_name = item.medicine_name && item.medicine_name.trim() !== '' ? item.medicine_name : null;
+      let dosage = item.dosage && item.dosage.trim() !== '' ? item.dosage : null;
+      let quantity = item.quantity && item.quantity.trim() !== '' ? item.quantity : null;
+      let instructions = item.instructions && item.instructions.trim() !== '' ? item.instructions : null;
+
+      if (!medicine_name) continue; // Pular itens sem nome
+
+      const itemResult = await client.query(
+        `INSERT INTO prescription_items (prescription_id, medicine_name, dosage, quantity, instructions)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [prescription.id, medicine_name, dosage, quantity, instructions]
+      );
+      itemsInserted.push(itemResult.rows[0]);
+    }
+
+    // Inserir fotos se houver
+    const photosInserted = [];
+    if (photo_urls && Array.isArray(photo_urls)) {
+      for (const photo_url of photo_urls) {
+        if (photo_url && photo_url.trim() !== '') {
+          const photoResult = await client.query(
+            `INSERT INTO prescription_photos (prescription_id, photo_url)
+             VALUES ($1, $2)
+             RETURNING *`,
+            [prescription.id, photo_url.trim()]
+          );
+          photosInserted.push(photoResult.rows[0]);
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+
+    res.json({
+      ...prescription,
+      items: itemsInserted,
+      photos: photosInserted
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao criar receita:', error);
+    res.status(500).json({ error: 'Erro ao criar receita' });
+  } finally {
+    client.release();
+  }
+});
+
+// Atualizar receita e seus itens
+app.put('/api/prescriptions/:id', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+    let { prescription_date, doctor_name, doctor_crm, doctor_specialty, notes, rating, items, photo_urls } = req.body;
+
+    // Converter strings vazias em NULL
+    prescription_date = prescription_date && prescription_date.trim() !== '' ? prescription_date : null;
+    doctor_name = doctor_name && doctor_name.trim() !== '' ? doctor_name : null;
+    doctor_crm = doctor_crm && doctor_crm.trim() !== '' ? doctor_crm : null;
+    doctor_specialty = doctor_specialty && doctor_specialty.trim() !== '' ? doctor_specialty : null;
+    notes = notes && notes.trim() !== '' ? notes : null;
+    rating = rating !== undefined && rating !== null && rating !== '' ? parseInt(rating) : null;
+
+    if (!prescription_date) {
+      return res.status(400).json({ error: 'Data da receita é obrigatória' });
+    }
+
+    if (rating !== null && (rating < 0 || rating > 10)) {
+      return res.status(400).json({ error: 'Rating deve ser entre 0 e 10' });
+    }
+
+    await client.query('BEGIN');
+
+    // Atualizar receita
+    const prescriptionResult = await client.query(
+      `UPDATE prescriptions
+       SET prescription_date = $1, doctor_name = $2, doctor_crm = $3, doctor_specialty = $4,
+           notes = $5, rating = $6, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $7 AND user_id = $8
+       RETURNING *`,
+      [prescription_date, doctor_name, doctor_crm, doctor_specialty, notes, rating, id, user_id]
+    );
+
+    if (prescriptionResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Receita não encontrada' });
+    }
+
+    const prescription = prescriptionResult.rows[0];
+
+    // Deletar itens antigos
+    await client.query('DELETE FROM prescription_items WHERE prescription_id = $1', [id]);
+
+    // Inserir novos itens
+    const itemsInserted = [];
+    if (items && items.length > 0) {
+      for (const item of items) {
+        let medicine_name = item.medicine_name && item.medicine_name.trim() !== '' ? item.medicine_name : null;
+        let dosage = item.dosage && item.dosage.trim() !== '' ? item.dosage : null;
+        let quantity = item.quantity && item.quantity.trim() !== '' ? item.quantity : null;
+        let instructions = item.instructions && item.instructions.trim() !== '' ? item.instructions : null;
+
+        if (!medicine_name) continue;
+
+        const itemResult = await client.query(
+          `INSERT INTO prescription_items (prescription_id, medicine_name, dosage, quantity, instructions)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING *`,
+          [prescription.id, medicine_name, dosage, quantity, instructions]
+        );
+        itemsInserted.push(itemResult.rows[0]);
+      }
+    }
+
+    // Deletar fotos antigas
+    await client.query('DELETE FROM prescription_photos WHERE prescription_id = $1', [id]);
+
+    // Inserir novas fotos
+    const photosInserted = [];
+    if (photo_urls && Array.isArray(photo_urls)) {
+      for (const photo_url of photo_urls) {
+        if (photo_url && photo_url.trim() !== '') {
+          const photoResult = await client.query(
+            `INSERT INTO prescription_photos (prescription_id, photo_url)
+             VALUES ($1, $2)
+             RETURNING *`,
+            [prescription.id, photo_url.trim()]
+          );
+          photosInserted.push(photoResult.rows[0]);
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+
+    res.json({
+      ...prescription,
+      items: itemsInserted,
+      photos: photosInserted
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao atualizar receita:', error);
+    res.status(500).json({ error: 'Erro ao atualizar receita' });
+  } finally {
+    client.release();
+  }
+});
+
+// Deletar receita (cascade deleta os itens e fotos automaticamente)
+app.delete('/api/prescriptions/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user_id = req.user.userId;
+
+    const result = await pool.query(
+      'DELETE FROM prescriptions WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, user_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Receita não encontrada' });
+    }
+
+    res.json({ message: 'Receita deletada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar receita:', error);
+    res.status(500).json({ error: 'Erro ao deletar receita' });
+  }
+});
+
+// Deletar foto individual de uma receita
+app.delete('/api/prescriptions/:id/photos/:photoId', authenticateToken, async (req, res) => {
+  try {
+    const { id, photoId } = req.params;
+    const user_id = req.user.userId;
+
+    // Verificar se a receita pertence ao usuário
+    const prescription = await pool.query(
+      'SELECT id FROM prescriptions WHERE id = $1 AND user_id = $2',
+      [id, user_id]
+    );
+
+    if (prescription.rows.length === 0) {
+      return res.status(404).json({ error: 'Receita não encontrada' });
+    }
+
+    // Deletar a foto
+    const result = await pool.query(
+      'DELETE FROM prescription_photos WHERE id = $1 AND prescription_id = $2 RETURNING *',
+      [photoId, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Foto não encontrada' });
+    }
+
+    res.json({ message: 'Foto deletada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar foto:', error);
+    res.status(500).json({ error: 'Erro ao deletar foto' });
+  }
+});
+
+// Upload de foto para receita
+app.post('/api/prescriptions/upload', authenticateToken, upload.single('photo'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+    const photoUrl = `/uploads/skincare/${req.file.filename}`;
+    res.json({
+      message: 'Upload realizado com sucesso',
+      photo_url: photoUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error('Erro no upload:', error);
+    res.status(500).json({ error: 'Erro ao fazer upload da foto' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE CONSULTAS (APPOINTMENTS)
+// ================================
+
+// Listar todas as consultas
+app.get('/api/appointments', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM appointments WHERE user_id = $1 ORDER BY appointment_date DESC, appointment_time DESC',
+      [req.user.userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar consultas:', error);
+    res.status(500).json({ error: 'Erro ao buscar consultas' });
+  }
+});
+
+// Criar nova consulta
+app.post('/api/appointments', authenticateToken, async (req, res) => {
+  const { patient_type, dependent_id, appointment_date, appointment_time, doctor_name, specialty, appointment_type, notes } = req.body;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO appointments
+       (user_id, patient_type, dependent_id, appointment_date, appointment_time, doctor_name, specialty, appointment_type, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [req.user.userId, patient_type, dependent_id || null, appointment_date, appointment_time, doctor_name, specialty, appointment_type, notes]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar consulta:', error);
+    res.status(500).json({ error: 'Erro ao criar consulta' });
+  }
+});
+
+// Atualizar consulta
+app.put('/api/appointments/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { patient_type, dependent_id, appointment_date, appointment_time, doctor_name, specialty, appointment_type, notes } = req.body;
+
+  try {
+    const result = await pool.query(
+      `UPDATE appointments
+       SET patient_type = $1, dependent_id = $2, appointment_date = $3, appointment_time = $4, doctor_name = $5,
+           specialty = $6, appointment_type = $7, notes = $8
+       WHERE id = $9 AND user_id = $10
+       RETURNING *`,
+      [patient_type, dependent_id || null, appointment_date, appointment_time, doctor_name, specialty, appointment_type, notes, id, req.user.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Consulta não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar consulta:', error);
+    res.status(500).json({ error: 'Erro ao atualizar consulta' });
+  }
+});
+
+// Deletar consulta
+app.delete('/api/appointments/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'DELETE FROM appointments WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, req.user.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Consulta não encontrada' });
+    }
+
+    res.json({ message: 'Consulta deletada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar consulta:', error);
+    res.status(500).json({ error: 'Erro ao deletar consulta' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE DEPENDENTES
+// ================================
+
+// Listar todos os dependentes
+app.get('/api/dependents', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM dependents WHERE user_id = $1 ORDER BY name ASC',
+      [req.user.userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar dependentes:', error);
+    res.status(500).json({ error: 'Erro ao buscar dependentes' });
+  }
+});
+
+// Criar novo dependente
+app.post('/api/dependents', authenticateToken, async (req, res) => {
+  const { name } = req.body;
+
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: 'Nome do dependente é obrigatório' });
+  }
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO dependents (user_id, name) VALUES ($1, $2) RETURNING *',
+      [req.user.userId, name.trim()]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar dependente:', error);
+    res.status(500).json({ error: 'Erro ao criar dependente' });
+  }
+});
+
+// Atualizar dependente
+app.put('/api/dependents/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: 'Nome do dependente é obrigatório' });
+  }
+
+  try {
+    const result = await pool.query(
+      'UPDATE dependents SET name = $1 WHERE id = $2 AND user_id = $3 RETURNING *',
+      [name.trim(), id, req.user.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dependente não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar dependente:', error);
+    res.status(500).json({ error: 'Erro ao atualizar dependente' });
+  }
+});
+
+// Deletar dependente
+app.delete('/api/dependents/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Verificar se existem consultas vinculadas a este dependente
+    const appointmentsCheck = await pool.query(
+      'SELECT COUNT(*) as count FROM appointments WHERE dependent_id = $1 AND user_id = $2',
+      [id, req.user.userId]
+    );
+
+    if (parseInt(appointmentsCheck.rows[0].count) > 0) {
+      return res.status(400).json({
+        error: 'Não é possível excluir este dependente pois existem consultas vinculadas a ele'
+      });
+    }
+
+    const result = await pool.query(
+      'DELETE FROM dependents WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, req.user.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Dependente não encontrado' });
+    }
+
+    res.json({ message: 'Dependente deletado com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar dependente:', error);
+    res.status(500).json({ error: 'Erro ao deletar dependente' });
+  }
+});
+
+// ================================
+// ENDPOINTS DE DIÁRIO
+// ================================
+
+// Listar categorias do diário
+app.get('/api/diary/categories', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM diary_categories WHERE user_id = $1 ORDER BY name ASC',
+      [req.user.userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar categorias do diário:', error);
+    res.status(500).json({ error: 'Erro ao buscar categorias' });
+  }
+});
+
+// Listar entradas do diário com filtros
+app.get('/api/diary/entries', authenticateToken, async (req, res) => {
+  const { month, year, week_start, week_end, search } = req.query;
+
+  try {
+    let query = `
+      SELECT
+        de.*,
+        COALESCE(
+          json_agg(
+            json_build_object('id', dc.id, 'name', dc.name, 'color', dc.color)
+          ) FILTER (WHERE dc.id IS NOT NULL),
+          '[]'
+        ) as categories
+      FROM diary_entries de
+      LEFT JOIN diary_entry_categories dec ON de.id = dec.entry_id
+      LEFT JOIN diary_categories dc ON dec.category_id = dc.id
+      WHERE de.user_id = $1
+    `;
+    const params = [req.user.userId];
+
+    // Filtro por mês/ano
+    if (month && year) {
+      params.push(parseInt(year), parseInt(month));
+      query += ` AND EXTRACT(YEAR FROM de.entry_date) = $${params.length - 1}
+                 AND EXTRACT(MONTH FROM de.entry_date) = $${params.length}`;
+    }
+
+    // Filtro por semana
+    if (week_start && week_end) {
+      params.push(week_start, week_end);
+      query += ` AND de.entry_date BETWEEN $${params.length - 1} AND $${params.length}`;
+    }
+
+    // Filtro por palavra-chave
+    if (search) {
+      params.push(`%${search}%`);
+      query += ` AND (de.title ILIKE $${params.length} OR de.content ILIKE $${params.length})`;
+    }
+
+    query += ' GROUP BY de.id ORDER BY de.entry_date DESC, de.created_at DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar entradas do diário:', error);
+    res.status(500).json({ error: 'Erro ao buscar entradas' });
+  }
+});
+
+// Buscar entrada específica
+app.get('/api/diary/entries/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      `SELECT
+        de.*,
+        COALESCE(
+          json_agg(
+            json_build_object('id', dc.id, 'name', dc.name, 'color', dc.color)
+          ) FILTER (WHERE dc.id IS NOT NULL),
+          '[]'
+        ) as categories
+      FROM diary_entries de
+      LEFT JOIN diary_entry_categories dec ON de.id = dec.entry_id
+      LEFT JOIN diary_categories dc ON dec.category_id = dc.id
+      WHERE de.id = $1 AND de.user_id = $2
+      GROUP BY de.id`,
+      [id, req.user.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Entrada não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar entrada:', error);
+    res.status(500).json({ error: 'Erro ao buscar entrada' });
+  }
+});
+
+// Criar nova entrada
+app.post('/api/diary/entries', authenticateToken, async (req, res) => {
+  const { entry_date, title, content, category_ids } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Inserir entrada
+    const entryResult = await client.query(
+      `INSERT INTO diary_entries (user_id, entry_date, title, content)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [req.user.userId, entry_date, title, content]
+    );
+
+    const entry = entryResult.rows[0];
+
+    // Inserir categorias se fornecidas
+    if (category_ids && category_ids.length > 0) {
+      for (const categoryId of category_ids) {
+        await client.query(
+          'INSERT INTO diary_entry_categories (entry_id, category_id) VALUES ($1, $2)',
+          [entry.id, categoryId]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Buscar entrada completa com categorias
+    const completeEntry = await pool.query(
+      `SELECT
+        de.*,
+        COALESCE(
+          json_agg(
+            json_build_object('id', dc.id, 'name', dc.name, 'color', dc.color)
+          ) FILTER (WHERE dc.id IS NOT NULL),
+          '[]'
+        ) as categories
+      FROM diary_entries de
+      LEFT JOIN diary_entry_categories dec ON de.id = dec.entry_id
+      LEFT JOIN diary_categories dc ON dec.category_id = dc.id
+      WHERE de.id = $1
+      GROUP BY de.id`,
+      [entry.id]
+    );
+
+    res.status(201).json(completeEntry.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao criar entrada:', error);
+    res.status(500).json({ error: 'Erro ao criar entrada' });
+  } finally {
+    client.release();
+  }
+});
+
+// Atualizar entrada
+app.put('/api/diary/entries/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { entry_date, title, content, category_ids } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Atualizar entrada
+    const entryResult = await client.query(
+      `UPDATE diary_entries
+       SET entry_date = $1, title = $2, content = $3
+       WHERE id = $4 AND user_id = $5
+       RETURNING *`,
+      [entry_date, title, content, id, req.user.userId]
+    );
+
+    if (entryResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Entrada não encontrada' });
+    }
+
+    // Remover categorias antigas
+    await client.query('DELETE FROM diary_entry_categories WHERE entry_id = $1', [id]);
+
+    // Inserir novas categorias
+    if (category_ids && category_ids.length > 0) {
+      for (const categoryId of category_ids) {
+        await client.query(
+          'INSERT INTO diary_entry_categories (entry_id, category_id) VALUES ($1, $2)',
+          [id, categoryId]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Buscar entrada completa com categorias
+    const completeEntry = await pool.query(
+      `SELECT
+        de.*,
+        COALESCE(
+          json_agg(
+            json_build_object('id', dc.id, 'name', dc.name, 'color', dc.color)
+          ) FILTER (WHERE dc.id IS NOT NULL),
+          '[]'
+        ) as categories
+      FROM diary_entries de
+      LEFT JOIN diary_entry_categories dec ON de.id = dec.entry_id
+      LEFT JOIN diary_categories dc ON dec.category_id = dc.id
+      WHERE de.id = $1
+      GROUP BY de.id`,
+      [id]
+    );
+
+    res.json(completeEntry.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao atualizar entrada:', error);
+    res.status(500).json({ error: 'Erro ao atualizar entrada' });
+  } finally {
+    client.release();
+  }
+});
+
+// Deletar entrada
+app.delete('/api/diary/entries/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'DELETE FROM diary_entries WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, req.user.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Entrada não encontrada' });
+    }
+
+    res.json({ message: 'Entrada deletada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar entrada:', error);
+    res.status(500).json({ error: 'Erro ao deletar entrada' });
+  }
+});
+
+// ================================
 // ENDPOINTS DE HUMOR (MOOD)
 // ================================
 
 // Listar todos os registros de humor
-app.get('/api/moods', async (req, res) => {
+app.get('/api/moods', authenticateToken, async (req, res) => {
   const { start_date, end_date } = req.query;
 
   try {
-    let query = 'SELECT * FROM daily_moods WHERE 1=1';
-    const params = [];
+    let query = 'SELECT * FROM daily_moods WHERE user_id = $1';
+    const params = [req.user.userId];
 
     if (start_date) {
       params.push(start_date);
@@ -1935,13 +3223,13 @@ app.get('/api/moods', async (req, res) => {
 });
 
 // Buscar humor por data específica
-app.get('/api/moods/:date', async (req, res) => {
+app.get('/api/moods/:date', authenticateToken, async (req, res) => {
   const { date } = req.params;
 
   try {
     const result = await pool.query(
-      'SELECT * FROM daily_moods WHERE mood_date = $1',
-      [date]
+      'SELECT * FROM daily_moods WHERE mood_date = $1 AND user_id = $2',
+      [date, req.user.userId]
     );
 
     if (result.rows.length === 0) {
@@ -1956,22 +3244,22 @@ app.get('/api/moods/:date', async (req, res) => {
 });
 
 // Criar ou atualizar humor (upsert)
-app.post('/api/moods', async (req, res) => {
+app.post('/api/moods', authenticateToken, async (req, res) => {
   const { mood_date, emotion_ids, day_rating, notes } = req.body;
 
   try {
     // Tentar inserir, se existir, atualizar
     const result = await pool.query(
-      `INSERT INTO daily_moods (mood_date, emotion_ids, day_rating, notes)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (mood_date)
+      `INSERT INTO daily_moods (user_id, mood_date, emotion_ids, day_rating, notes)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, mood_date)
        DO UPDATE SET
          emotion_ids = EXCLUDED.emotion_ids,
          day_rating = EXCLUDED.day_rating,
          notes = EXCLUDED.notes,
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [mood_date, emotion_ids || [], day_rating || null, notes || null]
+      [req.user.userId, mood_date, emotion_ids || [], day_rating || null, notes || null]
     );
 
     res.status(201).json(result.rows[0]);
@@ -1982,7 +3270,7 @@ app.post('/api/moods', async (req, res) => {
 });
 
 // Atualizar humor
-app.put('/api/moods/:date', async (req, res) => {
+app.put('/api/moods/:date', authenticateToken, async (req, res) => {
   const { date } = req.params;
   const { emotion_ids, day_rating, notes } = req.body;
 
@@ -1990,8 +3278,8 @@ app.put('/api/moods/:date', async (req, res) => {
     const result = await pool.query(
       `UPDATE daily_moods
        SET emotion_ids = $1, day_rating = $2, notes = $3, updated_at = CURRENT_TIMESTAMP
-       WHERE mood_date = $4 RETURNING *`,
-      [emotion_ids || [], day_rating || null, notes || null, date]
+       WHERE mood_date = $4 AND user_id = $5 RETURNING *`,
+      [emotion_ids || [], day_rating || null, notes || null, date, req.user.userId]
     );
 
     if (result.rows.length === 0) {
@@ -2006,13 +3294,13 @@ app.put('/api/moods/:date', async (req, res) => {
 });
 
 // Excluir humor
-app.delete('/api/moods/:date', async (req, res) => {
+app.delete('/api/moods/:date', authenticateToken, async (req, res) => {
   const { date } = req.params;
 
   try {
     const result = await pool.query(
-      'DELETE FROM daily_moods WHERE mood_date = $1 RETURNING mood_date',
-      [date]
+      'DELETE FROM daily_moods WHERE mood_date = $1 AND user_id = $2 RETURNING mood_date',
+      [date, req.user.userId]
     );
 
     if (result.rows.length === 0) {
