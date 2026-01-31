@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom"
-import { ArrowLeft, Calendar, Plus, Edit2, Trash2, Clock, User, Stethoscope } from "lucide-react"
+import { Calendar, Plus, Edit2, Trash2, Clock, User, Stethoscope } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/PageHeader"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -417,30 +417,18 @@ const SaudeConsultas = () => {
     : DENTAL_SPECIALTIES
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-teal-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Link to="/saude">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-                <Calendar className="h-10 w-10 text-blue-600" />
-                Consultas
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Gerencie suas consultas médicas e odontológicas
-              </p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-background">
+      <PageHeader
+        title="Consultas"
+        backTo="/saude"
+        actions={
           <Button onClick={() => handleOpenDialog()} className="bg-blue-600 hover:bg-blue-700">
             <Plus className="h-4 w-4 mr-2" />
             Nova Consulta
           </Button>
-        </div>
+        }
+      />
+      <div className="container mx-auto px-4 py-8">
 
         {/* Content */}
         <Tabs value={String(currentTab)} onValueChange={(value) => setCurrentTab(value === 'paciente' ? 'paciente' : parseInt(value))}>

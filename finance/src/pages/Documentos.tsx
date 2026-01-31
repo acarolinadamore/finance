@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  ArrowLeft,
   Upload,
   Search,
   FileText,
@@ -37,6 +35,7 @@ import { DocumentViewerDialog } from '@/components/DocumentViewerDialog';
 import { EditDocumentDialog } from '@/components/EditDocumentDialog';
 import { CreateCategoryDialog } from '@/components/CreateCategoryDialog';
 import { EditCategoryDialog } from '@/components/EditCategoryDialog';
+import { PageHeader } from '@/components/PageHeader';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -273,24 +272,16 @@ const Documentos = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 max-w-7xl">
-        <div className="flex items-center gap-3 mb-6">
-          <Link to="/">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">Documentos Importantes</h1>
-            <p className="text-muted-foreground text-sm">
-              Seus documentos importantes sempre à mão
-            </p>
-          </div>
+      <PageHeader
+        title="Documentos"
+        actions={
           <Button onClick={() => setUploadDialogOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Adicionar Documento
           </Button>
-        </div>
+        }
+      />
+      <main className="container mx-auto px-4 py-6 max-w-7xl">
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded mb-4">

@@ -75,14 +75,14 @@ export function CycleRecordDialog({ open, onOpenChange, date, existingRecord }: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby="cycle-record-desc">
         <DialogHeader>
           <DialogTitle>
             Registrar Dia de Fluxo
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div id="cycle-record-desc" className="space-y-6">
           <div>
             <Label htmlFor="record-date" className="text-base font-semibold mb-2 block">Data</Label>
             <Input

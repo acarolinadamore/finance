@@ -15,6 +15,8 @@ import Meals from "./pages/Meals";
 import MealReports from "./pages/MealReports";
 import Rotina from "./pages/Rotina";
 import Calendario from "./pages/Calendario";
+import Cronograma from "./pages/Cronograma";
+import CronogramaDetalhes from "./pages/CronogramaDetalhes";
 import Documentos from "./pages/Documentos";
 import DatasImportantes from "./pages/DatasImportantes";
 import Peso from "./pages/Peso";
@@ -23,6 +25,7 @@ import Leituras from "./pages/Leituras";
 import Estudos from "./pages/Estudos";
 import Catolico from "./pages/Catolico";
 import CatolicoOracoes from "./pages/CatolicoOracoes";
+import CatolicoProvidencias from "./pages/CatolicoProvidencias";
 import CatolicoVersiculos from "./pages/CatolicoVersiculos";
 import CatolicoDuvidas from "./pages/CatolicoDuvidas";
 import CatolicoLeituras from "./pages/CatolicoLeituras";
@@ -34,6 +37,7 @@ import Skincare from "./pages/Skincare";
 import Saude from "./pages/Saude";
 import SaudeConsultas from "./pages/SaudeConsultas";
 import SaudeReceitas from "./pages/SaudeReceitas";
+import Reunioes from "./pages/Reunioes";
 import NotFound from "./pages/NotFound";
 import MigrationTool from "./pages/MigrationTool";
 import CicloFeminino from "./pages/CicloFeminino";
@@ -75,6 +79,8 @@ const App = () => (
           <Route path="/meals/reports" element={<MealReports />} />
           <Route path="/rotina" element={<Rotina />} />
           <Route path="/calendario" element={<Calendario />} />
+          <Route path="/cronograma" element={<Cronograma />} />
+          <Route path="/cronograma/:id" element={<CronogramaDetalhes />} />
           <Route path="/documentos" element={<Documentos />} />
           <Route path="/datas-importantes" element={<DatasImportantes />} />
           <Route path="/peso" element={<Peso />} />
@@ -83,6 +89,7 @@ const App = () => (
           <Route path="/estudos" element={<Estudos />} />
           <Route path="/catolico" element={<Catolico />} />
           <Route path="/catolico/oracoes" element={<CatolicoOracoes />} />
+          <Route path="/catolico/providencias" element={<CatolicoProvidencias />} />
           <Route path="/catolico/versiculos" element={<CatolicoVersiculos />} />
           <Route path="/catolico/duvidas" element={<CatolicoDuvidas />} />
           <Route path="/catolico/leituras" element={<CatolicoLeituras />} />
@@ -95,6 +102,7 @@ const App = () => (
           <Route path="/saude" element={<Saude />} />
           <Route path="/saude/consultas" element={<SaudeConsultas />} />
           <Route path="/saude/receitas" element={<SaudeReceitas />} />
+          <Route path="/reunioes" element={<Reunioes />} />
           <Route path="/migration" element={<MigrationTool />} />
           <Route path="/api-test" element={<TransactionsExample />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

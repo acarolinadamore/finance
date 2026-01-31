@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import type { FlowLevel } from '@/types/cycle';
+import type { PhaseInfo } from '@/lib/cyclePhases';
 
 interface DayEvent {
   id: string;
@@ -13,6 +14,8 @@ interface CalendarDayData {
   moodEmojis?: string[];
   hasMeals?: boolean;
   events?: DayEvent[];
+  cyclePhase?: PhaseInfo | null;
+  cronogramaEtapas?: Array<{ id: number; nome: string; cor: string; cronograma_titulo?: string }>;
 }
 
 interface CalendarDayProps {
@@ -41,8 +44,11 @@ export function CalendarDay({
 }: CalendarDayProps) {
   const dayNumber = date.getDate();
 
-  const showCycle = visibleModules.includes('cycle') && data?.cycleFlow && data.cycleFlow !== 'none';
+  const cycleModuleActive = visibleModules.includes('cycle');
+  const showCycleFlow = cycleModuleActive && data?.cycleFlow && data.cycleFlow !== 'none';
+  const showCyclePhases = cycleModuleActive && data?.cyclePhase;
   const showMoods = visibleModules.includes('moods') && data?.moodEmojis && data.moodEmojis.length > 0;
+  const showCronograma = visibleModules.includes('cronograma') && data?.cronogramaEtapas && data.cronogramaEtapas.length > 0;
   const events = data?.events || [];
 
   const truncateText = (text: string, maxLength: number) => {
@@ -60,6 +66,9 @@ export function CalendarDay({
         !isCurrentMonth && 'opacity-40',
         isToday && 'ring-2 ring-primary ring-offset-1'
       )}
+      style={{
+        backgroundColor: showCyclePhases && data?.cyclePhase ? data.cyclePhase.bgColor : undefined,
+      }}
     >
       <span
         className={cn(
@@ -108,7 +117,7 @@ export function CalendarDay({
         </div>
       )}
 
-      {showCycle && (
+      {showCycleFlow && (
         <div className="absolute bottom-1 right-1">
           <span
             className="text-xs leading-none"
@@ -116,6 +125,20 @@ export function CalendarDay({
           >
             {FLOW_DROPS[data!.cycleFlow!]}
           </span>
+        </div>
+      )}
+
+      {/* Cronograma lines */}
+      {showCronograma && (
+        <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-0.5 pb-0.5 px-0.5">
+          {data!.cronogramaEtapas!.map((etapa) => (
+            <div
+              key={etapa.id}
+              className="h-1 rounded-full w-full"
+              style={{ backgroundColor: etapa.cor }}
+              title={`${etapa.nome} (${etapa.cronograma_titulo})`}
+            />
+          ))}
         </div>
       )}
     </button>

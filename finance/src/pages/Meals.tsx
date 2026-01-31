@@ -10,12 +10,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Plus, Search, BarChart3 } from 'lucide-react';
+import { Plus, Search, BarChart3 } from 'lucide-react';
 import { useMeals } from '@/hooks/useMeals';
 import { MealCard } from '@/components/MealCard';
 import { MealFormDialog } from '@/components/MealFormDialog';
 import { Meal, MEAL_TYPE_LABELS } from '@/types/meals';
 import { toast } from 'sonner';
+import { PageHeader } from '@/components/PageHeader';
 
 const Meals = () => {
   const { meals, addMeal, updateMeal, deleteMeal } = useMeals();
@@ -96,23 +97,11 @@ const Meals = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 max-w-6xl">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold">Registro de Refeições</h1>
-              <p className="text-muted-foreground text-sm">
-                Acompanhe o que você come e como se sente
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
+      <PageHeader
+        title="Registro de Refeições"
+        backTo="/"
+        actions={
+          <>
             <Link to="/meals/reports">
               <Button variant="outline">
                 <BarChart3 className="h-4 w-4 mr-2" />
@@ -123,8 +112,11 @@ const Meals = () => {
               <Plus className="h-4 w-4 mr-2" />
               Registrar Refeição
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
+
+      <main className="container mx-auto px-4 py-6 max-w-6xl">
 
         {/* Estatísticas rápidas */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

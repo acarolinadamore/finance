@@ -1,25 +1,12 @@
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 
 const Peso = () => {
   return (
     <div className="min-h-screen bg-background">
+      <PageHeader title="Peso" />
       <main className="container mx-auto px-4 py-6 max-w-6xl">
-        <div className="flex items-center gap-3 mb-6">
-          <Link to="/">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold">Registro de Peso</h1>
-            <p className="text-muted-foreground text-sm">
-              Acompanhe sua evolução de peso e saúde
-            </p>
-          </div>
-        </div>
 
         <Card>
           <CardHeader>

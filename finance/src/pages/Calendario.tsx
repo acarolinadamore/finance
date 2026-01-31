@@ -1,15 +1,18 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CalendarDay } from '@/components/CalendarDay';
 import { CalendarSettingsDialog } from '@/components/CalendarSettingsDialog';
 import { EventDialog } from '@/components/EventDialog';
-import { useCycleRecords } from '@/hooks/useCycle';
+import { PageHeader } from '@/components/PageHeader';
+import { useCycleRecords, useCycleSettings } from '@/hooks/useCycle';
 import { useMoods } from '@/hooks/useApiMoods';
 import { useCalendarEvents } from '@/hooks/useCalendarEvents';
+import { useCronogramaEtapas } from '@/hooks/useCronogramas';
 import { EMOTIONS } from '@/types/routine';
+import { calculatePhaseForDate, PHASE_INFO } from '@/lib/cyclePhases';
+import type { PhaseInfo, CyclePhase } from '@/lib/cyclePhases';
 import {
   startOfMonth,
   endOfMonth,
@@ -37,6 +40,8 @@ interface CalendarDayData {
   moodEmojis?: string[];
   hasMeals?: boolean;
   events?: DayEvent[];
+  cyclePhase?: PhaseInfo | null;
+  cronogramaEtapas?: Array<{ id: number; nome: string; cor: string; cronograma_titulo?: string }>;
 }
 
 const Calendario = () => {
@@ -68,6 +73,9 @@ const Calendario = () => {
     start_date: format(calendarStart, 'yyyy-MM-dd'),
     end_date: format(calendarEnd, 'yyyy-MM-dd'),
   });
+
+  const { data: cronogramaEtapas = [] } = useCronogramaEtapas();
+  const { data: cycleSettings } = useCycleSettings();
 
   const calendarDays = useMemo(() => {
     return eachDayOfInterval({ start: calendarStart, end: calendarEnd });
@@ -122,8 +130,42 @@ const Calendario = () => {
       });
     });
 
+    // Add cycle phases to each day
+    if (cycleSettings) {
+      calendarDays.forEach(day => {
+        const dateKey = format(day, 'yyyy-MM-dd');
+        const phase = calculatePhaseForDate(day, cycleSettings);
+        map.set(dateKey, {
+          ...map.get(dateKey),
+          cyclePhase: phase,
+        });
+      });
+    }
+
+    // Add cronograma etapas to each day
+    calendarDays.forEach(day => {
+      const dateKey = format(day, 'yyyy-MM-dd');
+      const etapasNesteDia = cronogramaEtapas.filter(etapa => {
+        const etapaStart = new Date(etapa.data_inicio);
+        const etapaEnd = new Date(etapa.data_termino);
+        return day >= etapaStart && day <= etapaEnd;
+      });
+
+      if (etapasNesteDia.length > 0) {
+        map.set(dateKey, {
+          ...map.get(dateKey),
+          cronogramaEtapas: etapasNesteDia.map(e => ({
+            id: e.id,
+            nome: e.nome,
+            cor: e.cor,
+            cronograma_titulo: e.cronograma_titulo,
+          })),
+        });
+      }
+    });
+
     return map;
-  }, [cycleRecords, moods, events]);
+  }, [cycleRecords, moods, events, cronogramaEtapas, cycleSettings, calendarDays]);
 
   const handleVisibleModulesChange = (modules: string[]) => {
     setVisibleModules(modules);
@@ -152,22 +194,9 @@ const Calendario = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 max-w-7xl">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold">Calendário</h1>
-              <p className="text-muted-foreground text-sm">
-                Visualize todos os seus módulos em um só lugar
-              </p>
-            </div>
-          </div>
-
+      <PageHeader
+        title="Calendário"
+        actions={
           <Button
             variant="outline"
             size="icon"
@@ -176,7 +205,9 @@ const Calendario = () => {
           >
             <Settings className="h-5 w-5" />
           </Button>
-        </div>
+        }
+      />
+      <main className="container mx-auto px-4 py-6 max-w-7xl">
 
         <Card>
           <CardContent className="p-6">
@@ -226,6 +257,101 @@ const Calendario = () => {
                   />
                 );
               })}
+            </div>
+
+            {/* Legendas */}
+            <div className="mt-6 space-y-6">
+              {/* 1. Legenda de Projetos do Cronograma */}
+              {visibleModules.includes('cronograma') && cronogramaEtapas.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-sm">Projetos visíveis neste mês:</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {cronogramaEtapas
+                      .filter((etapa) => {
+                        const etapaStart = new Date(etapa.data_inicio);
+                        const etapaEnd = new Date(etapa.data_termino);
+                        return (etapaStart <= calendarEnd && etapaEnd >= calendarStart);
+                      })
+                      .map((etapa) => (
+                        <div key={etapa.id} className="flex items-center gap-2 text-sm">
+                          <div
+                            className="w-4 h-1 rounded-full"
+                            style={{ backgroundColor: etapa.cor }}
+                          />
+                          <span className="font-medium">{etapa.nome}</span>
+                          <span className="text-muted-foreground">({etapa.cronograma_titulo})</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Legendas do Ciclo Feminino */}
+              {visibleModules.includes('cycle') && cycleSettings && (
+                <>
+                  {/* Intensidade do Fluxo */}
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-sm">Intensidade do fluxo:</h3>
+                    <div className="flex gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🩸</span>
+                        <span className="text-xs">Leve</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🩸🩸</span>
+                        <span className="text-xs">Moderado</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">🩸🩸🩸</span>
+                        <span className="text-xs">Intenso</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Entenda as Fases do Ciclo - Versão Completa */}
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-base">Entenda as Fases do Ciclo</h3>
+                    <div className="space-y-4">
+                      {(['menstrual', 'follicular', 'ovulatory', 'luteal_early', 'luteal_late'] as CyclePhase[]).map((phaseKey) => {
+                        const phase = PHASE_INFO[phaseKey];
+                        return (
+                          <div key={phaseKey} className="space-y-2 border-l-4 pl-4" style={{ borderColor: phase.color }}>
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="w-6 h-6 rounded-full flex-shrink-0 border-2"
+                                style={{
+                                  backgroundColor: phase.bgColor,
+                                  borderColor: phase.color,
+                                }}
+                              />
+                              <h4 className="font-semibold text-sm">
+                                {phase.name} <span className="text-muted-foreground font-normal">({phase.durationDays} {phase.durationDays === 1 ? 'dia' : 'dias'})</span>
+                              </h4>
+                            </div>
+
+                            <div className="space-y-1 text-sm">
+                              <div>
+                                <span className="font-medium text-muted-foreground">O que acontece: </span>
+                                <span className="text-foreground">{phase.description}</span>
+                              </div>
+
+                              <div>
+                                <span className="font-medium text-muted-foreground">Humor: </span>
+                                <span className="text-foreground">{phase.mood}</span>
+                              </div>
+
+                              <div>
+                                <span className="font-medium text-muted-foreground">Necessidades: </span>
+                                <span className="text-foreground">{phase.needs}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

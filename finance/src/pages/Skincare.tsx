@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom"
-import { ArrowLeft, Sparkles, Plus, GripVertical, Edit2, Calendar, Image as ImageIcon, Upload } from "lucide-react"
+import { Sparkles, Plus, GripVertical, Edit2, Calendar, Image as ImageIcon, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/PageHeader"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -601,7 +601,7 @@ const Skincare = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-50">
+      <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
           <div className="text-center py-12">
             <div className="animate-pulse text-muted-foreground">Carregando...</div>
@@ -612,27 +612,9 @@ const Skincare = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-50">
+    <div className="min-h-screen bg-background">
+      <PageHeader title="Skincare" />
       <div className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link to="/">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-pink-500 flex items-center justify-center">
-              <Sparkles className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold text-gray-800">Skincare</h1>
-              <p className="text-muted-foreground mt-1">
-                Sua rotina de cuidados com a pele
-              </p>
-            </div>
-          </div>
-        </div>
 
         {/* Card de Tratamento Atual */}
         <Card className="mb-6 border-2 border-pink-300 bg-white">

@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import {
-  ArrowLeft,
   BookOpen,
   Cross,
   FileText,
@@ -16,6 +15,7 @@ import {
   EyeOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/PageHeader"
 import {
   Card,
   CardContent,
@@ -68,6 +68,14 @@ const defaultModules: CatholicModule[] = [
     color: "#ec4899", // Pink
   },
   {
+    id: "providencias",
+    title: "Providências e Graças",
+    description: "Bênçãos e ações de Deus na sua vida",
+    icon: Sparkles,
+    path: "/catolico/providencias",
+    color: "#fbbf24", // Yellow Gold
+  },
+  {
     id: "versiculos",
     title: "Versículos",
     description: "Seus versículos bíblicos favoritos",
@@ -81,7 +89,7 @@ const defaultModules: CatholicModule[] = [
     description: "Dúvidas para levar ao padre",
     icon: HelpCircle,
     path: "/catolico/duvidas",
-    color: "#f59e0b", // Amber
+    color: "#f97316", // Orange
   },
   {
     id: "leituras",
@@ -111,7 +119,7 @@ const defaultModules: CatholicModule[] = [
     id: "terco",
     title: "Terço",
     description: "Registro e meditação do Santo Terço",
-    icon: Sparkles,
+    icon: Cross,
     path: "/catolico/terco",
     color: "#0ea5e9", // Sky
   },
@@ -188,9 +196,16 @@ const Catolico = () => {
     const saved = localStorage.getItem("catolico-modules-order")
     if (saved) {
       const savedIds = JSON.parse(saved)
-      return savedIds
+      const savedModules = savedIds
         .map((id: string) => defaultModules.find((m) => m.id === id))
         .filter(Boolean)
+
+      // Adicionar novos módulos que não estão no localStorage
+      const newModules = defaultModules.filter(
+        (m) => !savedIds.includes(m.id)
+      )
+
+      return [...savedModules, ...newModules]
     }
     return defaultModules
   })
@@ -198,13 +213,21 @@ const Catolico = () => {
   const [visibleModules, setVisibleModules] = useState<Record<string, boolean>>(
     () => {
       const saved = localStorage.getItem("catolico-modules-visibility")
-      if (saved) {
-        return JSON.parse(saved)
-      }
       const initial: Record<string, boolean> = {}
+
+      // Inicializar todos os módulos como visíveis
       defaultModules.forEach((m) => {
         initial[m.id] = true
       })
+
+      // Sobrescrever com as configurações salvas, se existirem
+      if (saved) {
+        const savedVisibility = JSON.parse(saved)
+        Object.keys(savedVisibility).forEach((key) => {
+          initial[key] = savedVisibility[key]
+        })
+      }
+
       return initial
     }
   )
@@ -251,55 +274,42 @@ const Catolico = () => {
   const visibleCount = Object.values(visibleModules).filter(Boolean).length
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      <div className="container mx-auto px-4 pt-8 pb-12 max-w-7xl">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
+    <div className="min-h-screen bg-background">
+      <PageHeader
+        title="Católico"
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Settings className="h-5 w-5" />
               </Button>
-            </Link>
-            <div>
-              <h1 className="text-4xl font-bold text-gray-800">Católico</h1>
-              <p className="text-muted-foreground mt-1">
-                Sua jornada espiritual organizada
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <Settings className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  Módulos Visíveis ({visibleCount}/{modules.length})
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {modules.map((module) => (
-                  <DropdownMenuCheckboxItem
-                    key={module.id}
-                    checked={visibleModules[module.id]}
-                    onCheckedChange={() => toggleModuleVisibility(module.id)}
-                  >
-                    <div className="flex items-center gap-2">
-                      {visibleModules[module.id] ? (
-                        <Eye className="h-4 w-4" />
-                      ) : (
-                        <EyeOff className="h-4 w-4" />
-                      )}
-                      {module.title}
-                    </div>
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                Módulos Visíveis ({visibleCount}/{modules.length})
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {modules.map((module) => (
+                <DropdownMenuCheckboxItem
+                  key={module.id}
+                  checked={visibleModules[module.id]}
+                  onCheckedChange={() => toggleModuleVisibility(module.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    {visibleModules[module.id] ? (
+                      <Eye className="h-4 w-4" />
+                    ) : (
+                      <EyeOff className="h-4 w-4" />
+                    )}
+                    {module.title}
+                  </div>
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
+      <div className="container mx-auto px-4 pt-8 pb-12 max-w-7xl">
 
         {/* Cards dos Módulos */}
         <DndContext

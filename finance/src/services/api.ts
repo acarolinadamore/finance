@@ -587,3 +587,330 @@ export const api = {
     return { data };
   },
 };
+
+// ============================================
+// PROVIDENCIAS E GRACAS API
+// ============================================
+
+export interface ApiProvidenciaGracaCategory {
+  id: number;
+  name: string;
+  icon: string;
+  color: string;
+}
+
+export interface ApiProvidenciaGraca {
+  id: number;
+  data: string;
+  titulo: string;
+  descricao?: string;
+  providencia?: string;
+  graca?: string;
+  pedido?: string;
+  intercessores?: string;
+  tags: ApiProvidenciaGracaCategory[];
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchProvidenciaGracaCategories(): Promise<ApiProvidenciaGracaCategory[]> {
+  const response = await fetch(`${API_BASE_URL}/catolico/providencia-graca-categories`);
+  return handleResponse<ApiProvidenciaGracaCategory[]>(response);
+}
+
+export async function fetchProvidenciasGracas(): Promise<ApiProvidenciaGraca[]> {
+  const response = await fetch(`${API_BASE_URL}/catolico/providencias-gracas`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ApiProvidenciaGraca[]>(response);
+}
+
+export async function createProvidenciaGraca(
+  data: Omit<ApiProvidenciaGraca, 'id' | 'created_at' | 'updated_at'>
+): Promise<ApiProvidenciaGraca> {
+  const response = await fetch(`${API_BASE_URL}/catolico/providencias-gracas`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiProvidenciaGraca>(response);
+}
+
+export async function updateProvidenciaGraca(
+  id: number,
+  data: Partial<Omit<ApiProvidenciaGraca, 'id' | 'created_at' | 'updated_at'>>
+): Promise<ApiProvidenciaGraca> {
+  const response = await fetch(`${API_BASE_URL}/catolico/providencias-gracas/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiProvidenciaGraca>(response);
+}
+
+export async function deleteProvidenciaGraca(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/catolico/providencias-gracas/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  await handleResponse<{ message: string }>(response);
+}
+
+// ==================== CRONOGRAMAS ====================
+
+export interface ApiCronogramaEtapa {
+  id: number;
+  cronograma_id: number;
+  nome: string;
+  descricao?: string;
+  prioridade: 'alta' | 'media' | 'baixa';
+  data_inicio: string;
+  data_termino: string;
+  cor: string;
+  observacoes?: string;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+  cronograma_titulo?: string;
+  cronograma_status?: string;
+}
+
+export interface ApiCronograma {
+  id: number;
+  titulo: string;
+  descricao?: string;
+  data_inicio: string;
+  data_termino: string;
+  status: 'ativo' | 'futuro' | 'concluido';
+  created_at: string;
+  updated_at: string;
+  total_etapas?: number;
+  etapas_concluidas?: number;
+  etapas?: ApiCronogramaEtapa[];
+}
+
+// Listar todos os cronogramas
+export async function fetchCronogramas(): Promise<ApiCronograma[]> {
+  const response = await fetch(`${API_BASE_URL}/cronogramas`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ApiCronograma[]>(response);
+}
+
+// Buscar um cronograma específico com suas etapas
+export async function fetchCronograma(id: number): Promise<ApiCronograma> {
+  const response = await fetch(`${API_BASE_URL}/cronogramas/${id}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ApiCronograma>(response);
+}
+
+// Criar novo cronograma
+export async function createCronograma(
+  data: Omit<ApiCronograma, 'id' | 'created_at' | 'updated_at' | 'total_etapas' | 'etapas_concluidas' | 'etapas'>
+): Promise<ApiCronograma> {
+  const response = await fetch(`${API_BASE_URL}/cronogramas`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiCronograma>(response);
+}
+
+// Atualizar cronograma
+export async function updateCronograma(
+  id: number,
+  data: Partial<Omit<ApiCronograma, 'id' | 'created_at' | 'updated_at' | 'total_etapas' | 'etapas_concluidas' | 'etapas'>>
+): Promise<ApiCronograma> {
+  const response = await fetch(`${API_BASE_URL}/cronogramas/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiCronograma>(response);
+}
+
+// Deletar cronograma
+export async function deleteCronograma(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/cronogramas/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  await handleResponse<{ message: string }>(response);
+}
+
+// ==================== ETAPAS DO CRONOGRAMA ====================
+
+// Buscar todas as etapas (para visualização no calendário)
+export async function fetchCronogramaEtapas(params?: {
+  data_inicio?: string;
+  data_termino?: string;
+}): Promise<ApiCronogramaEtapa[]> {
+  const queryParams = new URLSearchParams();
+  if (params?.data_inicio) queryParams.append('data_inicio', params.data_inicio);
+  if (params?.data_termino) queryParams.append('data_termino', params.data_termino);
+
+  const response = await fetch(
+    `${API_BASE_URL}/cronograma-etapas${queryParams.toString() ? `?${queryParams}` : ''}`,
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+  return handleResponse<ApiCronogramaEtapa[]>(response);
+}
+
+// Listar etapas de um cronograma
+export async function fetchEtapasByCronograma(cronogramaId: number): Promise<ApiCronogramaEtapa[]> {
+  const response = await fetch(`${API_BASE_URL}/cronogramas/${cronogramaId}/etapas`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ApiCronogramaEtapa[]>(response);
+}
+
+// Criar etapa
+export async function createCronogramaEtapa(
+  cronogramaId: number,
+  data: Omit<ApiCronogramaEtapa, 'id' | 'cronograma_id' | 'created_at' | 'updated_at' | 'cronograma_titulo' | 'cronograma_status'>
+): Promise<ApiCronogramaEtapa> {
+  const response = await fetch(`${API_BASE_URL}/cronogramas/${cronogramaId}/etapas`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiCronogramaEtapa>(response);
+}
+
+// Atualizar etapa
+export async function updateCronogramaEtapa(
+  id: number,
+  data: Partial<Omit<ApiCronogramaEtapa, 'id' | 'cronograma_id' | 'created_at' | 'updated_at' | 'cronograma_titulo' | 'cronograma_status'>>
+): Promise<ApiCronogramaEtapa> {
+  const response = await fetch(`${API_BASE_URL}/cronograma-etapas/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiCronogramaEtapa>(response);
+}
+
+// Deletar etapa
+export async function deleteCronogramaEtapa(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/cronograma-etapas/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  await handleResponse<{ message: string }>(response);
+}
+
+// ==================== REUNIÕES (MEETINGS) ====================
+
+export interface ApiMeetingTag {
+  id: number;
+  user_id: number;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeetingAttachment {
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  file_data: string; // base64
+}
+
+export interface MeetingLink {
+  url: string;
+}
+
+export interface ApiMeeting {
+  id: number;
+  user_id: number;
+  tag_id: number;
+  meeting_date: string;
+  meeting_time?: string;
+  title: string;
+  summary?: string;
+  description?: string;
+  participants?: string;
+  links?: MeetingLink[];
+  my_definitions?: string;
+  participant_definitions?: string;
+  decisions?: string;
+  next_steps?: string;
+  pending?: string;
+  attachments?: MeetingAttachment[];
+  created_at: string;
+  updated_at: string;
+  tag_name?: string;
+  tag_color?: string;
+}
+
+// Meeting Tags
+export async function fetchMeetingTags() {
+  const response = await fetch(`${API_BASE_URL}/meeting-tags`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ApiMeetingTag[]>(response);
+}
+
+export async function createMeetingTag(data: { name: string; color: string }) {
+  const response = await fetch(`${API_BASE_URL}/meeting-tags`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiMeetingTag>(response);
+}
+
+export async function updateMeetingTag(id: number, data: { name: string; color: string }) {
+  const response = await fetch(`${API_BASE_URL}/meeting-tags/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiMeetingTag>(response);
+}
+
+export async function deleteMeetingTag(id: number) {
+  const response = await fetch(`${API_BASE_URL}/meeting-tags/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  await handleResponse<{ message: string }>(response);
+}
+
+// Meetings
+export async function fetchMeetings() {
+  const response = await fetch(`${API_BASE_URL}/meetings`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<ApiMeeting[]>(response);
+}
+
+export async function createMeeting(data: Omit<ApiMeeting, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'tag_name' | 'tag_color'>) {
+  const response = await fetch(`${API_BASE_URL}/meetings`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiMeeting>(response);
+}
+
+export async function updateMeeting(id: number, data: Partial<Omit<ApiMeeting, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'tag_name' | 'tag_color'>>) {
+  const response = await fetch(`${API_BASE_URL}/meetings/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  return handleResponse<ApiMeeting>(response);
+}
+
+export async function deleteMeeting(id: number) {
+  const response = await fetch(`${API_BASE_URL}/meetings/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  await handleResponse<{ message: string }>(response);
+}

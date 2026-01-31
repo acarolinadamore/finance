@@ -1187,4 +1187,172 @@ router.post('/intercessions/reorder', authenticateToken, async (req, res) => {
   }
 });
 
+// ============================================
+// ROTAS DE PROVIDÊNCIAS E GRAÇAS RECEBIDAS
+// ============================================
+
+// Buscar categorias de providências/graças
+router.get('/providencia-graca-categories', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM providencia_graca_categories ORDER BY name'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar categorias:', error);
+    res.status(500).json({ error: 'Erro ao buscar categorias' });
+  }
+});
+
+// Buscar providências/graças com tags
+router.get('/providencias-gracas', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        pg.*,
+        COALESCE(
+          json_agg(
+            json_build_object('id', c.id, 'name', c.name, 'icon', c.icon, 'color', c.color)
+            ORDER BY c.name
+          ) FILTER (WHERE c.id IS NOT NULL),
+          '[]'
+        ) as tags
+      FROM providencias_gracas pg
+      LEFT JOIN providencias_gracas_tags pgt ON pg.id = pgt.providencia_graca_id
+      LEFT JOIN providencia_graca_categories c ON pgt.category_id = c.id
+      GROUP BY pg.id
+      ORDER BY pg.data DESC, pg.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar providências e graças:', error);
+    res.status(500).json({ error: 'Erro ao buscar providências e graças' });
+  }
+});
+
+// Criar providência/graça
+router.post('/providencias-gracas', authenticateToken, async (req, res) => {
+  const { data, titulo, descricao, providencia, graca, pedido, intercessores, tags } = req.body;
+
+  if (!data || !titulo) {
+    return res.status(400).json({ error: 'Data e título são obrigatórios' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await client.query(
+      'INSERT INTO providencias_gracas (data, titulo, descricao, providencia, graca, pedido, intercessores) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [data, titulo, descricao, providencia, graca, pedido, intercessores]
+    );
+
+    const providenciaGraca = result.rows[0];
+
+    // Inserir tags
+    if (tags && tags.length > 0) {
+      for (const tagId of tags) {
+        await client.query(
+          'INSERT INTO providencias_gracas_tags (providencia_graca_id, category_id) VALUES ($1, $2)',
+          [providenciaGraca.id, tagId]
+        );
+      }
+    }
+
+    // Buscar tags para retornar
+    const tagsResult = await client.query(`
+      SELECT c.* FROM providencia_graca_categories c
+      INNER JOIN providencias_gracas_tags pgt ON c.id = pgt.category_id
+      WHERE pgt.providencia_graca_id = $1
+      ORDER BY c.name
+    `, [providenciaGraca.id]);
+
+    providenciaGraca.tags = tagsResult.rows;
+
+    await client.query('COMMIT');
+    res.status(201).json(providenciaGraca);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao criar providência/graça:', error);
+    res.status(500).json({ error: 'Erro ao criar providência/graça' });
+  } finally {
+    client.release();
+  }
+});
+
+// Atualizar providência/graça
+router.put('/providencias-gracas/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { data, titulo, descricao, providencia, graca, pedido, intercessores, tags } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await client.query(
+      'UPDATE providencias_gracas SET data = $1, titulo = $2, descricao = $3, providencia = $4, graca = $5, pedido = $6, intercessores = $7, updated_at = CURRENT_TIMESTAMP WHERE id = $8 RETURNING *',
+      [data, titulo, descricao, providencia, graca, pedido, intercessores, id]
+    );
+
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Providência/Graça não encontrada' });
+    }
+
+    const providenciaGraca = result.rows[0];
+
+    // Atualizar tags
+    await client.query('DELETE FROM providencias_gracas_tags WHERE providencia_graca_id = $1', [id]);
+
+    if (tags && tags.length > 0) {
+      for (const tagId of tags) {
+        await client.query(
+          'INSERT INTO providencias_gracas_tags (providencia_graca_id, category_id) VALUES ($1, $2)',
+          [id, tagId]
+        );
+      }
+    }
+
+    // Buscar tags para retornar
+    const tagsResult = await client.query(`
+      SELECT c.* FROM providencia_graca_categories c
+      INNER JOIN providencias_gracas_tags pgt ON c.id = pgt.category_id
+      WHERE pgt.providencia_graca_id = $1
+      ORDER BY c.name
+    `, [id]);
+
+    providenciaGraca.tags = tagsResult.rows;
+
+    await client.query('COMMIT');
+    res.json(providenciaGraca);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao atualizar providência/graça:', error);
+    res.status(500).json({ error: 'Erro ao atualizar providência/graça' });
+  } finally {
+    client.release();
+  }
+});
+
+// Deletar providência/graça
+router.delete('/providencias-gracas/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'DELETE FROM providencias_gracas WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Providência/Graça não encontrada' });
+    }
+
+    res.json({ message: 'Providência/Graça deletada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar providência/graça:', error);
+    res.status(500).json({ error: 'Erro ao deletar providência/graça' });
+  }
+});
+
 module.exports = { initCatolicoRoutes };

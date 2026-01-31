@@ -30,7 +30,29 @@ export function CycleStats() {
   const formattedNextPeriodDate = format(nextPeriodDate, "d 'de' MMMM", { locale: ptBR });
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <>
+      {/* Aviso de Ciclo em Ajuste */}
+      {stats.cycleInAdjustment && (
+        <Card className="border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 mb-4">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  ⚠️ Seu ciclo está passando por um ajuste
+                </p>
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  Detectamos irregularidade recente ({stats.outliersCount > 0 ? `${stats.outliersCount} ciclo(s) atípico(s)` : 'poucos dados'}).
+                  As previsões são baseadas no seu ciclo habitual de {stats.averageCycleLength} dias.
+                  Continue registrando para melhorar a precisão.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Dia do Ciclo</CardTitle>
@@ -99,5 +121,6 @@ export function CycleStats() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

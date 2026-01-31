@@ -70,3 +70,22 @@ mobile/dist/
 # Shared
 shared/node_modules/
 shared/dist/
+
+# Server logs
+server.log
+server/*.log
+
+# Migrations executadas localmente
+server/migration_*.sql
+server/*migration*.js
+
+# Documentação técnica local (pode conter dados sensíveis)
+**/ANALISE_*.md
+**/GUIA_*.md
+**/SISTEMA_*.md
+**/INSTRUCOES_*.md
+**/PAINEL_*.md
+
+# Package locks (opcional - descomente se quiser ignorar)
+# package-lock.json
+# finance/package-lock.json

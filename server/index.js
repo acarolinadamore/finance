@@ -3425,6 +3425,34 @@ app.post('/api/cycle-records', async (req, res) => {
       [record_date, flow_level || 'none', symptoms || [], notes || null]
     );
 
+    // Detectar início de novo ciclo menstrual
+    // Se registrou fluxo moderado ou intenso, verificar se é início de novo ciclo
+    if (flow_level === 'moderate' || flow_level === 'heavy') {
+      // Buscar o último registro antes deste
+      const previousRecords = await pool.query(
+        `SELECT record_date, flow_level FROM cycle_records
+         WHERE record_date < $1
+         ORDER BY record_date DESC
+         LIMIT 7`,
+        [record_date]
+      );
+
+      // Se não houve fluxo nos últimos dias (ou é o primeiro registro),
+      // considerar como início de novo ciclo
+      const hasNoRecentFlow = previousRecords.rows.length === 0 ||
+        previousRecords.rows.every(r => r.flow_level === 'none' || r.flow_level === 'light');
+
+      if (hasNoRecentFlow) {
+        // Atualizar last_period_start_date nas configurações
+        await pool.query(
+          `UPDATE cycle_settings
+           SET last_period_start_date = $1,
+               updated_at = CURRENT_TIMESTAMP`,
+          [record_date]
+        );
+      }
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Erro ao criar registro do ciclo:', error);
@@ -3520,42 +3548,123 @@ app.get('/api/cycle-stats', async (req, res) => {
       .slice(0, 3)
       .map(([symptom]) => symptom);
 
-    const cyclesData = await pool.query(
+    // Buscar todos os registros ordenados do mais antigo para o mais recente
+    const allRecordsData = await pool.query(
       `SELECT record_date, flow_level FROM cycle_records
-       WHERE flow_level != 'none'
-       ORDER BY record_date DESC
-       LIMIT 180`
+       ORDER BY record_date ASC
+       LIMIT 365`
     );
 
-    const cycles = [];
-    let currentCycle = [];
+    // Identificar inícios de ciclo (primeiro dia de fluxo moderate/heavy após período sem fluxo)
+    const cycleStarts = [];
+    let lastFlowDate = null;
 
-    cyclesData.rows.forEach(record => {
-      if (currentCycle.length === 0 ||
-          (new Date(currentCycle[currentCycle.length - 1].record_date) - new Date(record.record_date)) / (1000 * 60 * 60 * 24) <= 10) {
-        currentCycle.push(record);
-      } else {
-        if (currentCycle.length > 0) cycles.push(currentCycle);
-        currentCycle = [record];
+    allRecordsData.rows.forEach(record => {
+      const recordDate = new Date(record.record_date);
+      const hasSignificantFlow = record.flow_level === 'moderate' || record.flow_level === 'heavy';
+
+      if (hasSignificantFlow) {
+        // Se é o primeiro registro ou passou 10+ dias desde o último fluxo, é início de novo ciclo
+        if (!lastFlowDate || (recordDate - lastFlowDate) / (1000 * 60 * 60 * 24) >= 10) {
+          cycleStarts.push(recordDate);
+        }
+        lastFlowDate = recordDate;
       }
     });
-    if (currentCycle.length > 0) cycles.push(currentCycle);
 
+    console.log('Inícios de ciclo detectados:', cycleStarts.map(d => d.toISOString().split('T')[0]));
+
+    // Calcular comprimento dos ciclos (dias entre inícios consecutivos)
     const cycleLengths = [];
-    for (let i = 0; i < cycles.length - 1; i++) {
-      const startDate1 = new Date(cycles[i][cycles[i].length - 1].record_date);
-      const startDate2 = new Date(cycles[i + 1][cycles[i + 1].length - 1].record_date);
-      const length = Math.floor((startDate1 - startDate2) / (1000 * 60 * 60 * 24));
-      if (length > 15 && length < 45) cycleLengths.push(length);
+    const allCycleLengths = []; // Incluindo os descartados
+    for (let i = 0; i < cycleStarts.length - 1; i++) {
+      const length = Math.floor((cycleStarts[i + 1] - cycleStarts[i]) / (1000 * 60 * 60 * 24));
+      console.log(`Ciclo ${i + 1}: ${length} dias`);
+      allCycleLengths.push(length);
+
+      // Filtrar ciclos normais (21-60 dias) - aumentado limite para 60
+      if (length >= 21 && length <= 60) {
+        cycleLengths.push(length);
+      } else {
+        console.log(`  -> Ignorado (fora do intervalo 21-60 dias)`);
+      }
     }
 
-    const variance = cycleLengths.length > 1 ?
-      Math.max(...cycleLengths) - Math.min(...cycleLengths) : 0;
-    const isRegular = variance <= 7;
+    console.log('Comprimentos de ciclos válidos:', cycleLengths);
+    console.log('Total de ciclos (incluindo descartados):', allCycleLengths.length);
+
+    // REGRA 1: Detectar outliers (ciclos muito diferentes do ciclo base)
+    const baseCycleLength = config.average_cycle_length; // Ciclo base configurado manualmente
+    const outlierThreshold = 7; // Variação máxima aceitável
+
+    const consistentCycles = cycleLengths.filter(length =>
+      Math.abs(length - baseCycleLength) <= outlierThreshold
+    );
+
+    const outliers = cycleLengths.filter(length =>
+      Math.abs(length - baseCycleLength) > outlierThreshold
+    );
+
+    console.log(`Ciclo base configurado: ${baseCycleLength} dias`);
+    console.log('Ciclos consistentes:', consistentCycles);
+    console.log('Outliers detectados:', outliers);
+
+    // REGRA 2 e 6: Só recalcular ciclo médio se houver 3+ ciclos consistentes
+    let calculatedCycleLength = baseCycleLength;
+    let cycleInAdjustment = false;
+
+    if (consistentCycles.length >= 3) {
+      // Tem dados suficientes - usar média dos ciclos consistentes
+      calculatedCycleLength = Math.round(
+        consistentCycles.reduce((sum, len) => sum + len, 0) / consistentCycles.length
+      );
+      console.log(`Usando ciclo calculado: ${calculatedCycleLength} dias (média de ${consistentCycles.length} ciclos)`);
+    } else {
+      // Menos de 3 ciclos consistentes - manter ciclo base
+      calculatedCycleLength = baseCycleLength;
+
+      // REGRA 5: Marcar como "em ajuste" se houver outliers ou poucos dados
+      if (outliers.length > 0 || cycleLengths.length < 3) {
+        cycleInAdjustment = true;
+        console.log('⚠️ Ciclo marcado como "em ajuste" - mantendo ciclo base de', baseCycleLength, 'dias');
+      }
+    }
+
+    // Calcular variance apenas dos ciclos consistentes
+    const variance = consistentCycles.length > 1 ?
+      Math.max(...consistentCycles) - Math.min(...consistentCycles) : 0;
+
+    console.log('Variance calculada (ciclos consistentes):', variance);
+
+    // Regularidade: variance <= 3 dias E pelo menos 2 ciclos consistentes
+    const isRegular = consistentCycles.length >= 2 && variance <= 3 && !cycleInAdjustment;
+
+    console.log('É regular?', isRegular);
+    console.log('Ciclo em ajuste?', cycleInAdjustment);
+
+    // REGRA 4: Basear previsão no último sangramento + ciclo base
+    let nextPeriodDate = null;
+
+    if (cycleStarts.length > 0) {
+      const lastCycleStartDate = cycleStarts[cycleStarts.length - 1];
+      nextPeriodDate = new Date(lastCycleStartDate);
+      nextPeriodDate.setDate(nextPeriodDate.getDate() + calculatedCycleLength);
+      console.log(`Previsão baseada em: ${lastCycleStartDate.toISOString().split('T')[0]} + ${calculatedCycleLength} dias`);
+    } else {
+      // Fallback para configuracao manual
+      nextPeriodDate = new Date(lastPeriodDate);
+      nextPeriodDate.setDate(nextPeriodDate.getDate() + calculatedCycleLength);
+    }
+
+    // Recalcular daysUntilNextPeriod baseado na previsão real
+    const daysUntilNextPeriodCalculated = nextPeriodDate ?
+      Math.ceil((nextPeriodDate - today) / (1000 * 60 * 60 * 24)) : daysUntilNextPeriod;
 
     res.json({
       currentCycleDay,
-      daysUntilNextPeriod,
+      daysUntilNextPeriod: daysUntilNextPeriodCalculated,
+      nextPeriodDate: nextPeriodDate ? nextPeriodDate.toISOString().split('T')[0] : null,
+      calculatedCycleLength,
       ovulationDay,
       fertileWindowStart,
       fertileWindowEnd,
@@ -3563,9 +3672,13 @@ app.get('/api/cycle-stats', async (req, res) => {
       topSymptoms,
       isRegular,
       variance,
+      cycleInAdjustment,
+      consistentCyclesCount: consistentCycles.length,
+      outliersCount: outliers.length,
       averagePeriodLength: config.average_period_length,
       averageCycleLength: config.average_cycle_length,
       lastPeriodStartDate: config.last_period_start_date,
+      hasRealData: cycleLengths.length > 0,
     });
   } catch (error) {
     console.error('Erro ao calcular estatísticas:', error);
@@ -4567,6 +4680,454 @@ app.delete('/api/subscriptions/:id', async (req, res) => {
   } catch (error) {
     console.error('Erro ao excluir assinatura:', error);
     res.status(500).json({ error: 'Erro ao excluir assinatura' });
+  }
+});
+
+// ==================== CRONOGRAMAS ====================
+
+// Listar todos os cronogramas
+app.get('/api/cronogramas', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        c.*,
+        COUNT(ce.id) as total_etapas,
+        COUNT(ce.id) FILTER (WHERE ce.data_termino < CURRENT_DATE) as etapas_concluidas
+      FROM cronogramas c
+      LEFT JOIN cronograma_etapas ce ON c.id = ce.cronograma_id
+      GROUP BY c.id
+      ORDER BY c.data_inicio DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar cronogramas:', error);
+    res.status(500).json({ error: 'Erro ao buscar cronogramas' });
+  }
+});
+
+// Buscar um cronograma específico com suas etapas
+app.get('/api/cronogramas/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const cronogramaResult = await pool.query(
+      'SELECT * FROM cronogramas WHERE id = $1',
+      [id]
+    );
+
+    if (cronogramaResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Cronograma não encontrado' });
+    }
+
+    const etapasResult = await pool.query(
+      'SELECT * FROM cronograma_etapas WHERE cronograma_id = $1 ORDER BY ordem, data_inicio',
+      [id]
+    );
+
+    const cronograma = cronogramaResult.rows[0];
+    cronograma.etapas = etapasResult.rows;
+
+    res.json(cronograma);
+  } catch (error) {
+    console.error('Erro ao buscar cronograma:', error);
+    res.status(500).json({ error: 'Erro ao buscar cronograma' });
+  }
+});
+
+// Criar novo cronograma
+app.post('/api/cronogramas', authenticateToken, async (req, res) => {
+  try {
+    const { titulo, descricao, data_inicio, data_termino, status } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO cronogramas (titulo, descricao, data_inicio, data_termino, status)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [titulo, descricao, data_inicio, data_termino, status || 'ativo']
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar cronograma:', error);
+    res.status(500).json({ error: 'Erro ao criar cronograma' });
+  }
+});
+
+// Atualizar cronograma
+app.put('/api/cronogramas/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { titulo, descricao, data_inicio, data_termino, status } = req.body;
+
+    const result = await pool.query(
+      `UPDATE cronogramas
+       SET titulo = $1, descricao = $2, data_inicio = $3, data_termino = $4, status = $5
+       WHERE id = $6
+       RETURNING *`,
+      [titulo, descricao, data_inicio, data_termino, status, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Cronograma não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar cronograma:', error);
+    res.status(500).json({ error: 'Erro ao atualizar cronograma' });
+  }
+});
+
+// Deletar cronograma (cascata deleta etapas)
+app.delete('/api/cronogramas/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM cronogramas WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Cronograma não encontrado' });
+    }
+
+    res.json({ message: 'Cronograma excluído com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir cronograma:', error);
+    res.status(500).json({ error: 'Erro ao excluir cronograma' });
+  }
+});
+
+// ==================== ETAPAS DO CRONOGRAMA ====================
+
+// Listar etapas de um cronograma
+app.get('/api/cronogramas/:cronogramaId/etapas', authenticateToken, async (req, res) => {
+  try {
+    const { cronogramaId } = req.params;
+
+    const result = await pool.query(
+      'SELECT * FROM cronograma_etapas WHERE cronograma_id = $1 ORDER BY ordem, data_inicio',
+      [cronogramaId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar etapas:', error);
+    res.status(500).json({ error: 'Erro ao buscar etapas' });
+  }
+});
+
+// Buscar todas as etapas (para visualização no calendário)
+app.get('/api/cronograma-etapas', authenticateToken, async (req, res) => {
+  try {
+    const { data_inicio, data_termino } = req.query;
+
+    let query = `
+      SELECT
+        ce.*,
+        c.titulo as cronograma_titulo,
+        c.status as cronograma_status
+      FROM cronograma_etapas ce
+      INNER JOIN cronogramas c ON ce.cronograma_id = c.id
+    `;
+
+    const params = [];
+
+    if (data_inicio && data_termino) {
+      query += ` WHERE ce.data_inicio <= $2 AND ce.data_termino >= $1`;
+      params.push(data_inicio, data_termino);
+    }
+
+    query += ` ORDER BY ce.data_inicio, ce.ordem`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar etapas:', error);
+    res.status(500).json({ error: 'Erro ao buscar etapas' });
+  }
+});
+
+// Criar etapa
+app.post('/api/cronogramas/:cronogramaId/etapas', authenticateToken, async (req, res) => {
+  try {
+    const { cronogramaId } = req.params;
+    const { nome, descricao, prioridade, data_inicio, data_termino, cor, observacoes, ordem } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO cronograma_etapas
+       (cronograma_id, nome, descricao, prioridade, data_inicio, data_termino, cor, observacoes, ordem)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [cronogramaId, nome, descricao, prioridade || 'media', data_inicio, data_termino, cor || '#3b82f6', observacoes, ordem || 0]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar etapa:', error);
+    res.status(500).json({ error: 'Erro ao criar etapa' });
+  }
+});
+
+// Atualizar etapa
+app.put('/api/cronograma-etapas/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, descricao, prioridade, data_inicio, data_termino, cor, observacoes, ordem } = req.body;
+
+    const result = await pool.query(
+      `UPDATE cronograma_etapas
+       SET nome = $1, descricao = $2, prioridade = $3, data_inicio = $4,
+           data_termino = $5, cor = $6, observacoes = $7, ordem = $8
+       WHERE id = $9
+       RETURNING *`,
+      [nome, descricao, prioridade, data_inicio, data_termino, cor, observacoes, ordem, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Etapa não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar etapa:', error);
+    res.status(500).json({ error: 'Erro ao atualizar etapa' });
+  }
+});
+
+// Deletar etapa
+app.delete('/api/cronograma-etapas/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'DELETE FROM cronograma_etapas WHERE id = $1 RETURNING id',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Etapa não encontrada' });
+    }
+
+    res.json({ message: 'Etapa excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir etapa:', error);
+    res.status(500).json({ error: 'Erro ao excluir etapa' });
+  }
+});
+
+// ==================== REUNIÕES (MEETINGS) ====================
+
+// Rotas para Meeting Tags
+app.get('/api/meeting-tags', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM meeting_tags WHERE user_id = $1 ORDER BY created_at ASC',
+      [req.user.userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar tags de reunião:', error);
+    res.status(500).json({ error: 'Erro ao buscar tags' });
+  }
+});
+
+app.post('/api/meeting-tags', authenticateToken, async (req, res) => {
+  try {
+    const { name, color } = req.body;
+    const userId = req.user.userId;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Nome da tag é obrigatório' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO meeting_tags (user_id, name, color) VALUES ($1, $2, $3) RETURNING *',
+      [userId, name.trim(), color || '#000000']
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar tag de reunião:', error);
+    res.status(500).json({ error: 'Erro ao criar tag' });
+  }
+});
+
+app.put('/api/meeting-tags/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, color } = req.body;
+    const userId = req.user.userId;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Nome da tag é obrigatório' });
+    }
+
+    const result = await pool.query(
+      'UPDATE meeting_tags SET name = $1, color = $2 WHERE id = $3 AND user_id = $4 RETURNING *',
+      [name.trim(), color, id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tag não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar tag de reunião:', error);
+    res.status(500).json({ error: 'Erro ao atualizar tag' });
+  }
+});
+
+app.delete('/api/meeting-tags/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    // Check if there are meetings with this tag
+    const meetingsCheck = await pool.query(
+      'SELECT COUNT(*) FROM meetings WHERE tag_id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (parseInt(meetingsCheck.rows[0].count) > 0) {
+      return res.status(400).json({
+        error: `Não é possível excluir esta tag porque existem ${meetingsCheck.rows[0].count} reuniões associadas a ela. Exclua ou mova as reuniões primeiro.`
+      });
+    }
+
+    const result = await pool.query(
+      'DELETE FROM meeting_tags WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tag não encontrada' });
+    }
+
+    res.json({ message: 'Tag excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir tag de reunião:', error);
+    res.status(500).json({ error: 'Erro ao excluir tag' });
+  }
+});
+
+// Rotas para Meetings
+app.get('/api/meetings', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT m.*, t.name as tag_name, t.color as tag_color
+       FROM meetings m
+       LEFT JOIN meeting_tags t ON m.tag_id = t.id
+       WHERE m.user_id = $1
+       ORDER BY m.meeting_date DESC, m.meeting_time DESC`,
+      [req.user.userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao buscar reuniões:', error);
+    res.status(500).json({ error: 'Erro ao buscar reuniões' });
+  }
+});
+
+app.post('/api/meetings', authenticateToken, async (req, res) => {
+  try {
+    const {
+      tag_id, meeting_date, meeting_time, title, summary, description,
+      participants, links, my_definitions, participant_definitions,
+      decisions, next_steps, pending, attachments
+    } = req.body;
+    const userId = req.user.userId;
+
+    if (!tag_id || !meeting_date || !title || !title.trim()) {
+      return res.status(400).json({ error: 'Tag, data e título são obrigatórios' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO meetings
+       (user_id, tag_id, meeting_date, meeting_time, title, summary, description,
+        participants, links, my_definitions, participant_definitions, decisions,
+        next_steps, pending, attachments)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       RETURNING *`,
+      [
+        userId, tag_id, meeting_date, meeting_time || null, title.trim(),
+        summary || null, description || null, participants || null,
+        JSON.stringify(links || []), my_definitions || null,
+        participant_definitions || null, decisions || null,
+        next_steps || null, pending || null, JSON.stringify(attachments || [])
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao criar reunião:', error);
+    res.status(500).json({ error: 'Erro ao criar reunião' });
+  }
+});
+
+app.put('/api/meetings/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      tag_id, meeting_date, meeting_time, title, summary, description,
+      participants, links, my_definitions, participant_definitions,
+      decisions, next_steps, pending, attachments
+    } = req.body;
+    const userId = req.user.userId;
+
+    if (!tag_id || !meeting_date || !title || !title.trim()) {
+      return res.status(400).json({ error: 'Tag, data e título são obrigatórios' });
+    }
+
+    const result = await pool.query(
+      `UPDATE meetings
+       SET tag_id = $1, meeting_date = $2, meeting_time = $3, title = $4,
+           summary = $5, description = $6, participants = $7, links = $8,
+           my_definitions = $9, participant_definitions = $10, decisions = $11,
+           next_steps = $12, pending = $13, attachments = $14
+       WHERE id = $15 AND user_id = $16
+       RETURNING *`,
+      [
+        tag_id, meeting_date, meeting_time || null, title.trim(),
+        summary || null, description || null, participants || null,
+        JSON.stringify(links || []), my_definitions || null,
+        participant_definitions || null, decisions || null,
+        next_steps || null, pending || null, JSON.stringify(attachments || []),
+        id, userId
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Reunião não encontrada' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao atualizar reunião:', error);
+    res.status(500).json({ error: 'Erro ao atualizar reunião' });
+  }
+});
+
+app.delete('/api/meetings/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    const result = await pool.query(
+      'DELETE FROM meetings WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Reunião não encontrada' });
+    }
+
+    res.json({ message: 'Reunião excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir reunião:', error);
+    res.status(500).json({ error: 'Erro ao excluir reunião' });
   }
 });
 

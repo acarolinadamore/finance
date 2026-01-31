@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  ArrowLeft,
   Plus,
   Search,
   Calendar as CalendarIcon,
@@ -17,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useImportantDates } from '@/hooks/useImportantDates';
 import { ImportantDateDialog } from '@/components/ImportantDateDialog';
+import { PageHeader } from '@/components/PageHeader';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,24 +102,16 @@ const DatasImportantes = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 max-w-7xl">
-        <div className="flex items-center gap-3 mb-6">
-          <Link to="/">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">Datas Importantes</h1>
-            <p className="text-muted-foreground text-sm">
-              Registre momentos memoráveis e acontecimentos importantes
-            </p>
-          </div>
+      <PageHeader
+        title="Datas Importantes"
+        actions={
           <Button onClick={handleAddClick}>
             <Plus className="h-4 w-4 mr-2" />
             Adicionar Data
           </Button>
-        </div>
+        }
+      />
+      <main className="container mx-auto px-4 py-6 max-w-7xl">
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded mb-4">

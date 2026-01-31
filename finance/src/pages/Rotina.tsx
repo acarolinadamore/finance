@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from "react"
-import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Plus, Smile, AlertCircle } from "lucide-react"
+import { Plus, Smile, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react"
+import { PageHeader } from "@/components/PageHeader"
 import {
   useRoutines,
   useCreateRoutine,
@@ -474,15 +474,16 @@ const Rotina = () => {
         style={{ backgroundColor: `${color}10`, borderColor: color }}
       >
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <span className="text-2xl">{emoji}</span>
-              <span>{label}</span>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 min-w-0">
+              <span className="text-xl sm:text-2xl">{emoji}</span>
+              <span className="text-sm sm:text-base truncate">{label}</span>
             </CardTitle>
             <Button
               size="sm"
               variant="outline"
               onClick={() => handleOpenForm(period)}
+              className="flex-shrink-0"
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -568,22 +569,11 @@ const Rotina = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageHeader
+        title="Rotina"
+        subtitle={<span className="capitalize">{formattedDate}</span>}
+      />
       <main className="container mx-auto px-4 py-6 max-w-7xl">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold">Rotina</h1>
-              <p className="text-muted-foreground text-sm capitalize">
-                {formattedDate}
-              </p>
-            </div>
-          </div>
-        </div>
 
         <Card className="mb-6">
           <CardContent className="pt-6">
@@ -611,11 +601,13 @@ const Rotina = () => {
         </Card>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
-            <TabsTrigger value="tarefas">Tarefas do Dia</TabsTrigger>
-            <TabsTrigger value="habitos">Controle de Hábitos</TabsTrigger>
-            <TabsTrigger value="humor">Humor do Dia</TabsTrigger>
-          </TabsList>
+          <div className="mb-6 overflow-x-auto">
+            <TabsList className="grid w-full grid-cols-3 min-w-[600px] md:min-w-0">
+              <TabsTrigger value="tarefas" className="text-xs sm:text-sm">Tarefas do Dia</TabsTrigger>
+              <TabsTrigger value="habitos" className="text-xs sm:text-sm">Controle de Hábitos</TabsTrigger>
+              <TabsTrigger value="humor" className="text-xs sm:text-sm">Humor do Dia</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="tarefas">
             {routinesLoading ? (
@@ -623,7 +615,7 @@ const Rotina = () => {
                 <p className="text-muted-foreground">Carregando rotinas...</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {renderPeriodColumn("morning")}
                 {renderPeriodColumn("afternoon")}
                 {renderPeriodColumn("night")}
@@ -638,40 +630,52 @@ const Rotina = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 sm:gap-3">
                     <Button
                       variant="outline"
                       size="icon"
                       onClick={() => setHabitMonth(subMonths(habitMonth, 1))}
+                      className="flex-shrink-0"
                     >
-                      <ArrowLeft className="h-4 w-4" />
+                      <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <h2 className="text-xl font-semibold capitalize">
+                    <h2 className="text-base sm:text-xl font-semibold capitalize whitespace-nowrap">
                       {format(habitMonth, "MMMM 'de' yyyy", { locale: ptBR })}
                     </h2>
                     <Button
                       variant="outline"
                       size="icon"
                       onClick={() => setHabitMonth(addMonths(habitMonth, 1))}
+                      className="flex-shrink-0"
                     >
-                      <Plus className="h-4 w-4 rotate-90" />
+                      <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setShowArchivedHabits(!showArchivedHabits)}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm"
                     >
-                      {showArchivedHabits
-                        ? "Ocultar Arquivados"
-                        : "Mostrar Arquivados"}
+                      <span className="hidden sm:inline">
+                        {showArchivedHabits
+                          ? "Ocultar Arquivados"
+                          : "Mostrar Arquivados"}
+                      </span>
+                      <span className="sm:hidden">
+                        {showArchivedHabits ? "Ocultar" : "Arquivados"}
+                      </span>
                     </Button>
-                    <Button onClick={() => setHabitFormOpen(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Adicionar Hábito
+                    <Button
+                      onClick={() => setHabitFormOpen(true)}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm"
+                    >
+                      <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">Adicionar Hábito</span>
+                      <span className="sm:hidden">Adicionar</span>
                     </Button>
                   </div>
                 </div>

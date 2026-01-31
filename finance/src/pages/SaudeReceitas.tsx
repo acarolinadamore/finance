@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom"
-import { ArrowLeft, Pill, Plus, Edit2, Trash2, Upload, Eye, X, Star } from "lucide-react"
+import { Pill, Plus, Edit2, Trash2, Upload, Eye, X, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/PageHeader"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -359,25 +359,11 @@ const SaudeReceitas = () => {
   )).sort()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Link to="/saude">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-                <Pill className="h-10 w-10 text-green-600" />
-                Receitas
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Gerencie suas receitas médicas
-              </p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-background">
+      <PageHeader
+        title="Receitas"
+        backTo="/saude"
+        actions={
           <Button
             onClick={() => setIsDialogOpen(true)}
             className="bg-green-600 hover:bg-green-700"
@@ -385,7 +371,9 @@ const SaudeReceitas = () => {
             <Plus className="h-4 w-4 mr-2" />
             Nova Receita
           </Button>
-        </div>
+        }
+      />
+      <div className="container mx-auto px-4 py-8">
 
         {/* Filters */}
         <Card className="mb-6">

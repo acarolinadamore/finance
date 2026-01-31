@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -8,7 +7,6 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  ArrowLeft,
   Plus,
   Search,
   Calendar as CalendarIcon,
@@ -23,6 +21,7 @@ import { api } from '@/services/api'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { RichTextEditor } from '@/components/catolico/RichTextEditor'
+import { PageHeader } from '@/components/PageHeader'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -312,31 +311,17 @@ const Diario = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-                <BookOpen className="h-10 w-10 text-purple-600" />
-                Diário
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Registre seus pensamentos e momentos especiais
-              </p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-background">
+      <PageHeader
+        title="Diário"
+        actions={
           <Button onClick={() => handleOpenDialog()} className="bg-purple-600 hover:bg-purple-700">
             <Plus className="h-4 w-4 mr-2" />
             Adicionar Nota
           </Button>
-        </div>
+        }
+      />
+      <div className="container mx-auto px-4 py-8">
 
         {/* Filtros */}
         <div className="mb-6 space-y-4">

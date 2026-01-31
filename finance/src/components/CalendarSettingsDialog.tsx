@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Activity, Heart } from 'lucide-react';
+import { Activity, Heart, GanttChart } from 'lucide-react';
 
 interface CalendarModule {
   id: string;
@@ -26,6 +26,12 @@ const AVAILABLE_MODULES: CalendarModule[] = [
     name: 'Ciclo Feminino',
     icon: <Activity className="h-4 w-4" />,
     color: '#db2777',
+  },
+  {
+    id: 'cronograma',
+    name: 'Cronograma',
+    icon: <GanttChart className="h-4 w-4" />,
+    color: '#3b82f6',
   },
   {
     id: 'moods',

@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Settings, Plus, AlertCircle } from 'lucide-react';
+import { Settings, Plus, AlertCircle, ChevronLeft } from 'lucide-react';
 import { CycleStats } from '@/components/CycleStats';
 import { CycleReports } from '@/components/CycleReports';
 import { CycleRecordDialog } from '@/components/CycleRecordDialog';
 import { CycleSettingsDialog } from '@/components/CycleSettingsDialog';
 import { CycleRecordsList } from '@/components/CycleRecordsList';
+import { CycleCalendar } from '@/components/CycleCalendar';
+import { PageHeader } from '@/components/PageHeader';
 import { useCycleSettings, useCycleRecordByDate } from '@/hooks/useCycle';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -29,6 +31,11 @@ const CicloFeminino = () => {
     setRecordDialogOpen(true);
   };
 
+  const handleEditClick = (date: string) => {
+    setSelectedDate(date);
+    setRecordDialogOpen(true);
+  };
+
   if (error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -44,7 +51,7 @@ const CicloFeminino = () => {
               <div className="flex gap-3 justify-center pt-4">
                 <Link to="/">
                   <Button variant="outline">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    <ChevronLeft className="h-4 w-4 mr-2" />
                     Voltar
                   </Button>
                 </Link>
@@ -58,19 +65,10 @@ const CicloFeminino = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto px-4 py-6 max-w-7xl">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Link to="/">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold">Ciclo Feminino</h1>
-              <p className="text-muted-foreground capitalize">{today}</p>
-            </div>
-          </div>
+      <PageHeader
+        title="Ciclo Feminino"
+        subtitle={<span className="capitalize">{today}</span>}
+        actions={
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -85,7 +83,9 @@ const CicloFeminino = () => {
               Registrar Dia de Fluxo
             </Button>
           </div>
-        </div>
+        }
+      />
+      <main className="container mx-auto px-4 py-6 max-w-7xl">
 
         {isLoading ? (
           <div className="text-center py-12">
@@ -112,16 +112,21 @@ const CicloFeminino = () => {
             </CardContent>
           </Card>
         ) : (
-          <Tabs defaultValue="resumo" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <Tabs defaultValue="calendario" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-3 max-w-2xl">
+              <TabsTrigger value="calendario">Calendário</TabsTrigger>
               <TabsTrigger value="resumo">Resumo</TabsTrigger>
               <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
             </TabsList>
 
+            <TabsContent value="calendario" className="space-y-6">
+              <CycleCalendar />
+            </TabsContent>
+
             <TabsContent value="resumo" className="space-y-6">
               <CycleStats />
 
-              <CycleRecordsList onRegisterClick={handleRegisterToday} />
+              <CycleRecordsList onRegisterClick={handleRegisterToday} onEditClick={handleEditClick} />
             </TabsContent>
 
             <TabsContent value="relatorios" className="space-y-6">

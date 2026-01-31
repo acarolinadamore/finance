@@ -33,6 +33,10 @@ import {
   LifeBuoy,
   Sparkles,
   Stethoscope,
+  GanttChart,
+  Video,
+  UsersRound,
+  Handshake,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -207,6 +211,22 @@ const Home = () => {
       icon: CalendarIcon,
       path: "/calendario",
       color: "#3b82f6", // Blue
+    },
+    {
+      id: "cronograma",
+      title: "Cronograma",
+      description: "Planeje projetos e visualize prazos",
+      icon: GanttChart,
+      path: "/cronograma",
+      color: "#3b82f6", // Blue
+    },
+    {
+      id: "reunioes",
+      title: "Reuniões",
+      description: "Organize suas reuniões por categoria",
+      icon: Handshake,
+      path: "/reunioes",
+      color: "#1f2937", // Dark Gray/Black
     },
 
     // VERDE - Finanças e Compras

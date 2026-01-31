@@ -41,12 +41,12 @@ export function CycleSettingsDialog({ open, onOpenChange }: CycleSettingsDialogP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby="cycle-settings-desc">
         <DialogHeader>
           <DialogTitle>Configurações do Ciclo</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div id="cycle-settings-desc" className="space-y-4">
           <div>
             <Label htmlFor="lastPeriod">Primeiro dia da última menstruação</Label>
             <Input

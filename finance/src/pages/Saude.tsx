@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom"
-import { ArrowLeft, Stethoscope, Pill, Calendar, Construction } from "lucide-react"
+import { Pill, Calendar, Construction } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/PageHeader"
 
 const Saude = () => {
   const sections = [
@@ -26,24 +27,9 @@ const Saude = () => {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50">
-      <div className="container mx-auto px-4 pt-8 pb-12">
-        <div className="flex items-center gap-4 mb-8">
-          <Link to="/">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-              <Stethoscope className="h-10 w-10 text-green-600" />
-              Saúde
-            </h1>
-            <p className="text-gray-600 mt-1">
-              Gerencie suas consultas e receitas médicas
-            </p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background">
+      <PageHeader title="Saúde" />
+      <div className="container mx-auto px-4 py-8">
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr items-stretch">
           {sections.map((section) => {
